@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FS-Agent Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    padding: 20px;
+  }
+  h1 { color: #58a6ff; margin-bottom: 20px; font-size: 1.8em; }
+  h2 { color: #79c0ff; margin: 20px 0 10px; font-size: 1.2em; }
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .stat { text-align: center; }
+  .stat-value { font-size: 2.4em; font-weight: 700; color: #58a6ff; }
+  .stat-label { color: #8b949e; font-size: 0.9em; margin-top: 4px; }
+  .progress-bar {
+    width: 100%;
+    height: 24px;
+    background: #21262d;
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 8px 0;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #238636, #2ea043);
+    border-radius: 12px;
+    transition: width 0.5s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 0.85em;
+  }
+  .phase { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+  .phase-dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #30363d;
+  }
+  .phase-dot.active { background: #2ea043; box-shadow: 0 0 8px #2ea043; }
+  .phase-dot.done { background: #58a6ff; }
+  .phase-label { flex: 1; }
+  .phase-status { color: #8b949e; font-size: 0.9em; }
+  .disk { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #21262d; }
+  .disk:last-child { border-bottom: none; }
+  .disk-name { font-weight: 600; color: #79c0ff; }
+  .disk-info { color: #8b949e; font-size: 0.9em; }
+  .error { color: #f85149; font-size: 0.85em; }
+  .log { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.85em; }
+  .log-entry { margin: 2px 0; }
+  .log-time { color: #8b949e; }
+  .refresh { color: #8b949e; font-size: 0.8em; text-align: right; margin-top: 10px; }
+  .no-data { color: #8b949e; font-style: italic; padding: 20px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>🔍 FS-Agent Dashboard</h1>
+
+<div class="grid">
+  <div class="card stat">
+    <div class="stat-value" id="files">0</div>
+    <div class="stat-label">Fichiers scannés</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-value" id="dirs">0</div>
+    <div class="stat-label">Dossiers scannés</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-value" id="size">0 Go</div>
+    <div class="stat-label">Taille totale</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-value" id="errors">0</div>
+    <div class="stat-label">Erreurs d'accès</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Progression globale</h2>
+  <div class="progress-bar">
+    <div class="progress-fill" id="progress-fill" style="width: 0%">0%</div>
+  </div>
+  <div class="phase">
+    <div class="phase-dot" id="phase-scan"></div>
+    <span class="phase-label">1. Listing (scan des disques)</span>
+    <span class="phase-status" id="phase-scan-status">En attente</span>
+  </div>
+  <div class="phase">
+    <div class="phase-dot" id="phase-hash"></div>
+    <span class="phase-label">2. Hashing (calcul des empreintes)</span>
+    <span class="phase-status" id="phase-hash-status">En attente</span>
+  </div>
+  <div class="phase">
+    <div class="phase-dot" id="phase-compare"></div>
+    <span class="phase-label">3. Comparaison (doublons, uniques, miroirs)</span>
+    <span class="phase-status" id="phase-compare-status">En attente</span>
+  </div>
+  <div class="phase">
+    <div class="phase-dot" id="phase-export"></div>
+    <span class="phase-label">4. Export (JSON, CSV, Markdown, plan)</span>
+    <span class="phase-status" id="phase-export-status">En attente</span>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Disques scannés</h2>
+    <div id="disks"><div class="no-data">En attente de données...</div></div>
+  </div>
+  <div class="card">
+    <h2>Temps</h2>
+    <div class="stat">
+      <div class="stat-value" id="elapsed">0s</div>
+      <div class="stat-label">Temps écoulé</div>
+    </div>
+    <div class="stat" style="margin-top: 12px;">
+      <div class="stat-value" id="eta">--</div>
+      <div class="stat-label">Temps restant (estimé)</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Journal</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<div class="refresh">Mise à jour automatique toutes les 2 secondes</div>
+
+<script>
+const PROGRESS_FILE = 'progress.json';
+let startTime = Date.now();
+let lastFiles = 0;
+let lastTime = Date.now();
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' Ko';
+  if (bytes < 1024*1024*1024) return (bytes/1024/1024).toFixed(1) + ' Mo';
+  return (bytes/1024/1024/1024).toFixed(2) + ' Go';
+}
+
+function formatTime(seconds) {
+  if (seconds < 60) return Math.round(seconds) + 's';
+  if (seconds < 3600) return Math.floor(seconds/60) + 'm ' + Math.round(seconds%60) + 's';
+  return Math.floor(seconds/3600) + 'h ' + Math.floor((seconds%3600)/60) + 'm';
+}
+
+function updatePhase(phase, status) {
+  const dot = document.getElementById('phase-' + phase);
+  const st = document.getElementById('phase-' + phase + '-status');
+  if (status === 'active') {
+    dot.className = 'phase-dot active';
+    st.textContent = 'En cours...';
+  } else if (status === 'done') {
+    dot.className = 'phase-dot done';
+    st.textContent = 'Terminé ✓';
+  } else {
+    dot.className = 'phase-dot';
+    st.textContent = 'En attente';
+  }
+}
+
+function addLog(msg) {
+  const log = document.getElementById('log');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  const time = new Date().toLocaleTimeString();
+  entry.innerHTML = `<span class="log-time">[${time}]</span> ${msg}`;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+  // Garder max 50 entrées
+  while (log.children.length > 50) log.removeChild(log.firstChild);
+}
+
+async function fetchProgress() {
+  try {
+    const resp = await fetch(PROGRESS_FILE + '?t=' + Date.now());
+    if (!resp.ok) throw new Error('not found');
+    const data = await resp.json();
+
+    // Stats
+    document.getElementById('files').textContent = (data.total_files || 0).toLocaleString();
+    document.getElementById('dirs').textContent = (data.total_dirs || 0).toLocaleString();
+    document.getElementById('size').textContent = formatSize(data.total_size || 0);
+    document.getElementById('errors').textContent = data.errors || 0;
+
+    // Temps
+    const elapsed = (Date.now() - startTime) / 1000;
+    document.getElementById('elapsed').textContent = formatTime(elapsed);
+
+    // ETA basé sur le débit
+    if (data.total_files > lastFiles && elapsed > 2) {
+      const rate = (data.total_files - lastFiles) / ((Date.now() - lastTime) / 1000);
+      if (rate > 0 && data.estimated_total > data.total_files) {
+        const remaining = (data.estimated_total - data.total_files) / rate;
+        document.getElementById('eta').textContent = formatTime(remaining);
+      }
+      lastFiles = data.total_files;
+      lastTime = Date.now();
+    }
+
+    // Progression globale
+    let pct = 0;
+    if (data.phase === 'scan') pct = Math.min(25, (data.total_files / (data.estimated_total || 100000)) * 25);
+    else if (data.phase === 'hash') pct = 25 + Math.min(25, (data.hashed || 0) / (data.total_files || 1) * 25);
+    else if (data.phase === 'compare') pct = 50 + 25;
+    else if (data.phase === 'export') pct = 75 + 25;
+    else if (data.phase === 'done') pct = 100;
+    const fill = document.getElementById('progress-fill');
+    fill.style.width = pct + '%';
+    fill.textContent = Math.round(pct) + '%';
+
+    // Phases
+    const phases = ['scan', 'hash', 'compare', 'export'];
+    const phaseOrder = { scan: 0, hash: 1, compare: 2, export: 3, done: 4 };
+    const current = phaseOrder[data.phase] || 0;
+    phases.forEach((p, i) => {
+      if (i < current) updatePhase(p, 'done');
+      else if (i === current) updatePhase(p, 'active');
+      else updatePhase(p, 'pending');
+    });
+    if (data.phase === 'done') phases.forEach(p => updatePhase(p, 'done'));
+
+    // Disques
+    if (data.by_drive) {
+      const disksDiv = document.getElementById('disks');
+      disksDiv.innerHTML = '';
+      for (const [drv, info] of Object.entries(data.by_drive)) {
+        const div = document.createElement('div');
+        div.className = 'disk';
+        div.innerHTML = `<span class="disk-name">Disque ${drv}:</span><span class="disk-info">${info.files.toLocaleString()} fichiers, ${formatSize(info.size)}</span>`;
+        disksDiv.appendChild(div);
+      }
+    }
+
+    // Log
+    if (data.last_message) {
+      addLog(data.last_message);
+    }
+
+  } catch (e) {
+    // Pas encore de fichier progress.json
+  }
+}
+
+setInterval(fetchProgress, 2000);
+fetchProgress();
+</script>
+</body>
+</html>

@@ -247,25 +247,26 @@ def hash_entries(entries: List, cfg: ScanConfig,
     - Incremental: utilise le cache SQLite pour eviter de re-hasher.
     """
     cache = HashCache(cfg.resolved_cache_db())
-    workers = max(1, cfg.workers)
+    # Limiter les threads I/O pour eviter de saturer le disque
+    workers = max(1, min(getattr(cfg, 'io_threads', 2), cfg.workers))
+    throttle = getattr(cfg, 'io_throttle_ms', 0) / 1000.0 if getattr(cfg, 'io_throttle_ms', 0) > 0 else 0
 
-    # Bloom filter sur les tailles: ne hasher que les fichiers dont la taille
-    # est partagee par >= 2 fichiers
+    # Bloom filter sur les tailles
     from bloom import filter_unique_sizes
     hashable = filter_unique_sizes(entries)
-
-    # Pour les fichiers de taille unique, marquer comme non-hashable
     hashable_set = {id(e) for e in hashable}
 
     def _work(e):
         if id(e) not in hashable_set:
-            # Taille unique: pas de doublon possible, skip hash
             e.partial_hash = None
             e.full_hash = None
             if progress_cb:
                 progress_cb(1)
             return
         hash_file(e, cfg, cache)
+        if throttle > 0:
+            import time
+            time.sleep(throttle)
         if progress_cb:
             progress_cb(1)
 

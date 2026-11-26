@@ -35,10 +35,14 @@ def parse_args():
     p.add_argument("--no-unique", action="store_true", help="Ne pas lister les fichiers uniques")
     p.add_argument("--no-by-name", action="store_true", help="Ne pas comparer par nom de fichier")
     p.add_argument("--no-by-size", action="store_true", help="Ne pas grouper par taille")
+    p.add_argument("--io-throttle", type=int, default=0, help="Delai en ms entre les lectures (0 = pas de throttle)")
+    p.add_argument("--dashboard", action="store_true", help="Lancer le dashboard HTML en temps reel")
+    p.add_argument("--progress-file", default=None, help="Fichier progress.json (defaut: reports/progress.json)")
     p.add_argument("--max-depth", type=int, default=None, help="Profondeur max de scan")
     p.add_argument("--analyze", default=None, help="Analyser un dossier specifique: affiche le plus complet par groupe")
     p.add_argument("--dest", default="E:\\", help="Disque de destination pour reunir les infos (defaut: E:\\)")
-    p.add_argument("--incremental", action="store_true", help="Scan incrementiel (ne re-scanner que les dossiers modifies)")
+    p.add_argument("--io-threads", type=int, default=2, help="Threads I/O par disque (2 pour HDD, 8+ pour SSD)")
+    p.add_argument("--sequential", action="store_true", help="Mode sequentiel (1 thread, ideal pour HDD)")
     return p.parse_args()
 
 
@@ -105,10 +109,19 @@ def main():
     args = parse_args()
     ensure_dirs()
 
-    # Mode analyse d'un dossier specifique
-    if args.analyze:
-        analyze_folder(args.analyze)
-        return
+    # Mode dashboard: lancer le serveur HTTP
+    if args.dashboard:
+        import subprocess
+        subprocess.Popen([sys.executable, "serve_dashboard.py"], cwd=str(Path(__file__).resolve().parent))
+        print("Dashboard lance sur http://localhost:8765/dashboard.html")
+
+    # Fichier de progression
+    if args.progress_file:
+        progress_file = args.progress_file
+    elif args.dashboard:
+        progress_file = str(Path(args.output or "E:/agent_fs/reports") / "progress.json")
+    else:
+        progress_file = None
 
     # Determiner les racines a scanner
     if args.all_drives or not args.roots:
@@ -140,6 +153,8 @@ def main():
         partial_hash_first=True,
         cache_db=args.cache,
         workers=args.workers,
+        io_threads=1 if args.sequential else args.io_threads,
+        io_throttle_ms=args.io_throttle,
         output_dir=args.output,
     )
     # Si partial-only: on desactive le full hash en mettant compute_hash False
@@ -177,7 +192,7 @@ def main():
         print("\n--- Comparaison en cours ---")
 
     print(f"Scan de: {', '.join(roots)}")
-    plan = agent.run(progress_cb=progress, on_listing_complete=on_listing)
+    plan = agent.run(progress_cb=progress, on_listing_complete=on_listing, progress_file=progress_file)
     print()  # newline apres progress
 
     print("\n=== RESUME COMPARAISON ===")

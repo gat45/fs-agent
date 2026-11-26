@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 import threading
+import json
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -49,9 +50,13 @@ class FilesystemAgent:
         return self.plan
 
     def run(self, progress_cb: Optional[Callable[[str, int], None]] = None,
-            on_listing_complete: Optional[Callable[[ScanResult], None]] = None) -> ComparePlan:
+            on_listing_complete: Optional[Callable[[ScanResult], None]] = None,
+            progress_file: Optional[str] = None) -> ComparePlan:
         t0 = time.time()
-        # Etape 1: LISTING - lister tous les fichiers et dossiers de chaque disque
+        self._progress_file = progress_file
+        self._start_time = t0
+        # Etape 1: LISTING
+        self._scan_count = 0
         self.scan(progress_cb)
         out_dir = self.scan_cfg.resolved_output_dir()
         self._listing_exports = {
@@ -61,13 +66,16 @@ class FilesystemAgent:
         }
         if on_listing_complete:
             on_listing_complete(self.scan_result)
-        # Etape 2: HASHING (si demande)
+        self._write_progress("scan", len(self.scan_result.files))
+        # Etape 2: HASHING
         if self.scan_cfg.compute_hash:
             self.hash(progress_cb)
+            self._write_progress("hash", len(self.scan_result.files))
         # Etape 3: COMPARAISON
+        self._write_progress("compare", 0)
         self.compare()
-        # Passer scan_result a compare (deja fait via self.scan_result)
-        # Etape 4: EXPORTS du plan (aucune suppression automatique)
+        # Etape 4: EXPORTS
+        self._write_progress("export", 0)
         plan_path = write_json(self.plan, out_dir)
         dup_path = write_csv_duplicates(self.plan, out_dir)
         uniq_path = write_csv_unique(self.plan, out_dir)
@@ -80,7 +88,33 @@ class FilesystemAgent:
             "report_md": str(md_path),
             "elapsed_sec": round(time.time() - t0, 2),
         }
+        self._write_progress("done", 0)
         return self.plan
+
+    def _write_progress(self, phase: str, n: int):
+        if not getattr(self, "_progress_file", None):
+            return
+        try:
+            by_drive = {}
+            if self.scan_result:
+                for f in self.scan_result.files:
+                    by_drive.setdefault(f.drive, {"files": 0, "size": 0})
+                    by_drive[f.drive]["files"] += 1
+                    by_drive[f.drive]["size"] += f.size
+            data = {
+                "phase": phase,
+                "total_files": len(self.scan_result.files) if self.scan_result else 0,
+                "total_dirs": len(self.scan_result.dirs) if self.scan_result else 0,
+                "total_size": sum(f.size for f in self.scan_result.files) if self.scan_result else 0,
+                "errors": len(self.scan_result.errors) if self.scan_result else 0,
+                "by_drive": by_drive,
+                "hashed": n if phase == "hash" else 0,
+                "last_message": f"Phase: {phase}",
+                "elapsed": round(time.time() - self._start_time, 1),
+            }
+            Path(self._progress_file).write_text(json.dumps(data), encoding="utf-8")
+        except Exception:
+            pass
 
     @property
     def exports(self) -> dict:

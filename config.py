@@ -77,6 +77,8 @@ class ScanConfig:
     hash_algorithm: str = "sha256"
     cache_db: Optional[str] = None   # chemin SQLite (None = default)
     workers: int = HASH_WORKERS
+    io_threads: int = 2  # threads I/O par disque (2 pour HDD, 8+ pour SSD)
+    io_throttle_ms: int = 0  # delai entre les lectures (0 = pas de throttle)
     output_dir: Optional[str] = None
     max_depth: Optional[int] = None  # profondeur max de scan (None = illimite)
 
