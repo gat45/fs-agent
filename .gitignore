@@ -1,0 +1,34 @@
+# Cache et donnees generees
+cache/
+reports/
+logs/
+__pycache__/
+*.pyc
+*.pyo
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Fichiers de test temporaires
+tests/__pycache__/
+*.tmp
+
+# Sorties de scan
+*.json
+*.csv
+*.md
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporaires
+*.tmp
+*.bak

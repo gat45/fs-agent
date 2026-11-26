@@ -1,0 +1,4 @@
+# Optionnels (performance)
+# xxhash>=3.0  # hashing rapide (non-cryptographique)
+# blake3>=0.4  # hashing rapide (non-cryptographique)
+tqdm>=4.60
