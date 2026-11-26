@@ -43,11 +43,52 @@ def parse_args():
     p.add_argument("--dashboard", action="store_true", help="Lancer le dashboard HTML en temps reel")
     p.add_argument("--progress-file", default=None, help="Fichier progress.json")
     p.add_argument("--analyze", default=None, help="Analyser un dossier specifique")
-    p.add_argument("--dest", default="E:\\", help="Disque de destination (defaut: E:\\)")
+    p.add_argument("--config", default=None, help="Fichier de configuration JSON")
+    p.add_argument("--interactive", action="store_true", help="Mode interactif (choisir fichier par fichier)")
     return p.parse_args()
 
 
-def progress(kind, n):
+def interactive_mode(plan, agent):
+    """Mode interactif: l'utilisateur choisit quoi faire pour chaque groupe."""
+    print("\n" + "=" * 60)
+    print("MODE INTERACTIF - Aucune action sans votre confirmation")
+    print("=" * 60)
+
+    for i, g in enumerate(plan.duplicate_groups, 1):
+        print(f"\n--- Groupe {i}/{len(plan.duplicate_groups)} ---")
+        print(f"  Hash: {g['key'][:16]}... | Taille: {_human(g['size'])} | Copies: {g['count']}")
+        mc = g.get("most_complete", {})
+        print(f"  Meilleur: {mc.get('path', 'N/A')}")
+        for f in g["files"]:
+            marker = " <-- MEILLEUR" if f.get("is_most_complete") else ""
+            print(f"    {f['path']}{marker}")
+
+        print("\n  Options:")
+        print("    [k] Garder le meilleur, archiver les autres")
+        print("    [c] Copier vers un dossier de destination")
+        print("    [i] Ignorer ce groupe")
+        print("    [q] Quitter")
+
+        choice = input("  Votre choix (k/c/i/q): ").strip().lower()
+        if choice == "q":
+            print("Arret du mode interactif.")
+            break
+        elif choice == "i":
+            print("  Groupe ignore.")
+            continue
+        elif choice == "k":
+            print(f"  Reference: {mc.get('path', 'N/A')}")
+            print(f"  Les {g['count']-1} autres copies sont conservees (aucune suppression).")
+        elif choice == "c":
+            dest = input("  Dossier de destination: ").strip()
+            if dest:
+                print(f"  Copie vers {dest} (a executer manuellement)")
+        else:
+            print("  Choix invalide, groupe ignore.")
+
+    print("\n" + "=" * 60)
+    print("Mode interactif termine. Aucune action n'a ete executee.")
+    print("=" * 60)
     print(f"\r[{kind}] {n} traites...", end="", flush=True)
 
 
@@ -86,8 +127,25 @@ def main():
     args = parse_args()
     ensure_dirs()
 
+    # Charger la configuration depuis un fichier si specifie
+    from config_file import load_config
+    file_cfg = load_config(Path(args.config) if args.config else None)
+
+    # Appliquer les valeurs du fichier de config (sauf si l'utilisateur a specifie explicitement)
+    if args.config:
+        if not args.roots and file_cfg.get("roots"):
+            args.roots = file_cfg["roots"]
+        if not args.all_drives and file_cfg.get("all_drives"):
+            args.all_drives = file_cfg["all_drives"]
+        if args.min_size == 0 and file_cfg.get("min_size", 0) > 0:
+            args.min_size = file_cfg["min_size"]
+        if args.max_size is None and file_cfg.get("max_size"):
+            args.max_size = file_cfg["max_size"]
+        if args.workers == 8 and file_cfg.get("workers", 8) != 8:
+            args.workers = file_cfg["workers"]
+
     # Mode dashboard
-    if args.dashboard:
+    if args.dashboard or file_cfg.get("dashboard"):
         import subprocess
         subprocess.Popen([sys.executable, "serve_dashboard.py"], cwd=str(Path(__file__).resolve().parent))
         print("Dashboard lance sur http://localhost:8765/dashboard.html")
@@ -198,9 +256,9 @@ def main():
     print(f"Liens casses: {plan.summary.get('num_broken_symlinks', 0)}")
     print(f"Dossiers dupliques: {plan.summary.get('num_duplicate_folders', 0)}")
     print(f"Espace recuperable: {plan.summary['recoverable_human']}")
-    print("\nExports:")
-    for k, v in agent.exports.items():
-        print(f"  {k}: {v}")
+    # Mode interactif
+    if args.interactive:
+        interactive_mode(plan, agent)
 
 
 if __name__ == "__main__":

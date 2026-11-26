@@ -73,6 +73,7 @@ class ComparePlan:
     empty_dirs: List[str] = field(default_factory=list)
     broken_symlinks: List[str] = field(default_factory=list)
     duplicate_folders: List[dict] = field(default_factory=list)
+    scan_diff: dict = field(default_factory=dict)  # comparaison temporelle
     # Statistiques par disque/racine
     per_root_stats: List[dict] = field(default_factory=list)
     # Actions suggerees
@@ -102,7 +103,7 @@ def _group_by_content(files) -> Dict[str, List]:
     return g
 
 
-def compare(files, cfg: CompareConfig, scan_result=None) -> ComparePlan:
+def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_scan_id=None) -> ComparePlan:
     plan = ComparePlan(roots=sorted({f.root for f in files}),
                        total_files=len(files),
                        total_size=sum(f.size for f in files))
@@ -390,6 +391,23 @@ def compare(files, cfg: CompareConfig, scan_result=None) -> ComparePlan:
 
     plan.suggested_actions = actions
 
+    # Comparaison temporelle (memoire persistante)
+    if history is not None and previous_scan_id is not None:
+        try:
+            diff = history.compare_scans(previous_scan_id, history.get_last_scan(scan_result.roots if scan_result else None)["scan_id"])
+            plan.scan_diff = {
+                "previous_scan_id": previous_scan_id,
+                "current_scan_id": diff.get("new_total", 0),
+                "files_added": len(diff.get("added", [])),
+                "files_removed": len(diff.get("removed", [])),
+                "files_modified": len(diff.get("modified", [])),
+                "files_unchanged": diff.get("unchanged_count", 0),
+                "added_paths": [f["path"] for f in diff.get("added", [])[:20]],
+                "removed_paths": [f["path"] for f in diff.get("removed", [])[:20]],
+                "modified_paths": [d["new"]["path"] for d in diff.get("modified", [])[:20]],
+            }
+        except Exception:
+            pass
     # --- Resume ---
     plan.summary = {
         "total_files": plan.total_files,

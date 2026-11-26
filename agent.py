@@ -15,6 +15,7 @@ from reporter import (
     write_json, write_inventory_json, write_csv_duplicates,
     write_csv_unique, write_csv_inventory, write_markdown,
 )
+from scan_history import ScanHistory
 
 
 class FilesystemAgent:
@@ -25,6 +26,9 @@ class FilesystemAgent:
         self.scan_result: Optional[ScanResult] = None
         self.plan: Optional[ComparePlan] = None
         self._progress_lock = threading.Lock()
+        self.history = ScanHistory()
+        self.scan_id: Optional[int] = None
+        self.previous_scan_id: Optional[int] = None
 
     def scan(self, progress_cb: Optional[Callable[[str, int], None]] = None) -> ScanResult:
         def _cb(n):
@@ -46,7 +50,8 @@ class FilesystemAgent:
     def compare(self) -> ComparePlan:
         if self.scan_result is None:
             raise RuntimeError("scan() must be called before compare()")
-        self.plan = compare(self.scan_result.files, self.compare_cfg, self.scan_result)
+        self.plan = compare(self.scan_result.files, self.compare_cfg, self.scan_result,
+                            self.history, self.previous_scan_id)
         return self.plan
 
     def run(self, progress_cb: Optional[Callable[[str, int], None]] = None,
@@ -59,6 +64,12 @@ class FilesystemAgent:
         self._scan_count = 0
         self.scan(progress_cb)
         out_dir = self.scan_cfg.resolved_output_dir()
+        # Sauvegarder dans l'historique (memoire persistante)
+        self.previous_scan_id = None
+        last = self.history.get_last_scan(self.scan_cfg.roots)
+        if last:
+            self.previous_scan_id = last["scan_id"]
+        self.scan_id = self.history.save_scan(self.scan_result, round(time.time() - t0, 2))
         self._listing_exports = {
             "inventory_json": str(write_inventory_json(self.scan_result.to_dict(), out_dir)),
             "inventory_csv": str(write_csv_inventory(
@@ -80,12 +91,15 @@ class FilesystemAgent:
         dup_path = write_csv_duplicates(self.plan, out_dir)
         uniq_path = write_csv_unique(self.plan, out_dir)
         md_path = write_markdown(self.plan, out_dir)
+        from excel_export import export_excel
+        xlsx_path = export_excel(self.plan, out_dir)
         self._exports = {
             **self._listing_exports,
             "plan_json": str(plan_path),
             "duplicates_csv": str(dup_path),
             "unique_csv": str(uniq_path),
             "report_md": str(md_path),
+            "report_xlsx": str(xlsx_path) if xlsx_path else None,
             "elapsed_sec": round(time.time() - t0, 2),
         }
         self._write_progress("done", 0)

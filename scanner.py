@@ -23,6 +23,7 @@ class FileEntry:
     size: int
     mtime: float
     ext: str
+    rel_path: str = ""  # chemin relatif a la racine (compression de prefixe)
     is_symlink: bool = False
     nlink: int = 1
     inode: Optional[int] = None
@@ -99,36 +100,6 @@ def _strip_long_path_prefix(path: str) -> str:
 
 
 def _drive_of(path: str) -> str:
-    p = Path(path)
-    # Windows: lettre de disque
-    if len(path) >= 2 and path[1] == ":":
-        return path[0].upper()
-    # UNC ou autre: premier segment
-    parts = path.replace("\\", "/").split("/")
-    return parts[0] if parts else ""
-    """Ajoute le prefixe \\\\?\\ pour supporter les chemins longs sur Windows."""
-    if os.name != "nt":
-        return path
-    # Deja prefixe
-    if path.startswith("\\\\?\\"):
-        return path
-    # UNC path
-    if path.startswith("\\\\"):
-        return "\\\\?\\UNC\\" + path[2:]
-    # Chemin absolu avec lettre de disque
-    if len(path) >= 2 and path[1] == ":":
-        return "\\\\?\\" + path
-    return path
-
-
-def _strip_long_path_prefix(path: str) -> str:
-    """Retire le prefixe \\\\?\\ pour l'affichage/stockage."""
-    if path.startswith("\\\\?\\UNC\\"):
-        return "\\\\" + path[8:]
-    if path.startswith("\\\\?\\"):
-        return path[4:]
-    return path
-    p = Path(path)
     # Windows: lettre de disque
     if len(path) >= 2 and path[1] == ":":
         return path[0].upper()
@@ -246,6 +217,7 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 fe = FileEntry(
                     path=full,
                     root=root_str,
+                    rel_path=os.path.relpath(full, root_str),
                     drive=drive,
                     size=st.st_size,
                     mtime=st.st_mtime,
