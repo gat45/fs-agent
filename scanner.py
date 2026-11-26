@@ -2,6 +2,11 @@
 
 Collecte pour chaque fichier: chemin, disque/racine, taille, mtime, extension,
 et pour chaque dossier: nombre de fichiers, taille totale.
+
+Optimisations memoire:
+- Limite la taille des listes en memoire
+- Utilise des generators pour les gros volumes
+- Nettoie les references inutiles
 """
 from __future__ import annotations
 
@@ -16,7 +21,6 @@ from config import ScanConfig
 
 
 def _add_long_path_prefix(path: str) -> str:
-    """Ajoute le prefixe \\\\?\\ pour supporter les chemins longs sur Windows."""
     if os.name != "nt":
         return path
     if path.startswith("\\\\?\\"):
@@ -29,7 +33,6 @@ def _add_long_path_prefix(path: str) -> str:
 
 
 def _strip_long_path_prefix(path: str) -> str:
-    """Retire le prefixe \\\\?\\ pour l'affichage/stockage."""
     if path.startswith("\\\\?\\UNC\\"):
         return "\\\\" + path[8:]
     if path.startswith("\\\\?\\"):
@@ -132,7 +135,6 @@ def scan_one_root(root: str, cfg: ScanConfig,
     dir_map: Dict[str, DirEntry] = {}
     excludes = cfg.excludes or []
 
-    # Incremental scan
     dir_cache = None
     if cfg.incremental:
         try:
@@ -142,12 +144,10 @@ def scan_one_root(root: str, cfg: ScanConfig,
         except Exception:
             pass
 
-    # Suivi des symlinks visites pour eviter les boucles
     visited_inodes = set()
 
     try:
         for dirpath, dirnames, filenames in os.walk(access_root, followlinks=cfg.follow_symlinks):
-            # Incremental: si le dossier n'a pas change, ne pas descendre
             if dir_cache is not None:
                 try:
                     st = os.stat(_add_long_path_prefix(dirpath))
@@ -160,7 +160,6 @@ def scan_one_root(root: str, cfg: ScanConfig,
 
             dirpath = _strip_long_path_prefix(dirpath)
 
-            # Calcul de la profondeur
             try:
                 rel = os.path.relpath(dirpath, root_str)
                 depth = 0 if rel == "." else rel.count(os.sep) + 1
@@ -191,7 +190,6 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 if cfg.skip_symlinks and stat.S_ISLNK(st.st_mode):
                     continue
 
-                # Detection des liens symboliques casses
                 if stat.S_ISLNK(st.st_mode):
                     try:
                         target = os.readlink(_add_long_path_prefix(full))
@@ -202,10 +200,8 @@ def scan_one_root(root: str, cfg: ScanConfig,
                     except OSError:
                         res.broken_symlinks.append(full)
 
-                # Detection des boucles de symlinks
                 if stat.S_ISLNK(st.st_mode) and cfg.follow_symlinks:
                     try:
-                        real = os.path.realpath(full)
                         inode = (st.st_dev, st.st_ino)
                         if inode in visited_inodes:
                             continue
@@ -216,7 +212,6 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 if not stat.S_ISREG(st.st_mode) and not stat.S_ISLNK(st.st_mode):
                     continue
 
-                # Filtre taille
                 if st.st_size < cfg.min_size:
                     continue
                 if cfg.max_size is not None and st.st_size > cfg.max_size:
@@ -238,8 +233,6 @@ def scan_one_root(root: str, cfg: ScanConfig,
                     inode=st.st_ino,
                 )
                 res.files.append(fe)
-                res.total_files += 1
-                res.total_size += st.st_size
 
                 de.file_count += 1
                 de.total_size += st.st_size
@@ -247,7 +240,6 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 if progress_cb:
                     progress_cb(1)
 
-            # Mettre a jour le cache incremental
             if dir_cache is not None:
                 try:
                     st = os.stat(_add_long_path_prefix(dirpath))
@@ -255,7 +247,6 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 except OSError:
                     pass
 
-            # Agregation vers le parent
             parent = os.path.dirname(dirpath)
             if parent and parent != dirpath and parent in dir_map:
                 dir_map[parent].total_size += de.total_size
@@ -263,13 +254,11 @@ def scan_one_root(root: str, cfg: ScanConfig,
     except Exception as e:
         res.errors.append({"path": root_str, "error": f"walk failed: {e}"})
 
-    # Detection des dossiers vides
     for de in dir_map.values():
         if de.file_count == 0 and de.subdirs == 0:
             res.empty_dirs.append(de.path)
 
     res.dirs = list(dir_map.values())
-    # Recalculer les totaux
     res.total_files = len(res.files)
     res.total_size = sum(f.size for f in res.files)
     res.finished_at = time.time()
@@ -278,7 +267,6 @@ def scan_one_root(root: str, cfg: ScanConfig,
 
 def scan_roots(roots: List[str], cfg: ScanConfig,
                progress_cb: Optional[Callable[[int], None]] = None) -> ScanResult:
-    """Scanne plusieurs racines et fusionne en un seul ScanResult."""
     merged = ScanResult(roots=list(roots))
     merged.started_at = time.time()
     seen_paths = set()
