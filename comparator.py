@@ -71,6 +71,7 @@ class ComparePlan:
     duplicate_folders: List[dict] = field(default_factory=list)
     scan_diff: dict = field(default_factory=dict)
     md_comparisons: List[dict] = field(default_factory=list)
+    partial_duplicates: List[dict] = field(default_factory=list)  # fichiers partiellement dupliques (CDC)
     per_root_stats: List[dict] = field(default_factory=list)
     suggested_actions: List[dict] = field(default_factory=list)
     summary: dict = field(default_factory=dict)
@@ -286,6 +287,17 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
     except Exception:
         pass
 
+    # FastCDC: detection de fichiers partiellement dupliques
+    try:
+        from fastcdc import find_partial_duplicates
+        all_files = [f.path for f in files]
+        # Limiter a 500 fichiers pour eviter O(n^2)
+        if len(all_files) <= 500:
+            partials = find_partial_duplicates(all_files, threshold=0.5)
+            plan.partial_duplicates = partials[:20]
+    except Exception:
+        pass
+
     # Top plus gros fichiers
     top_largest = sorted(files, key=lambda f: -f.size)[:20]
     plan.top_largest = [
@@ -415,6 +427,7 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
         "num_broken_symlinks": len(plan.broken_symlinks),
         "num_duplicate_folders": len(plan.duplicate_folders),
         "num_md_comparisons": len(plan.md_comparisons),
+        "num_partial_duplicates": len(plan.partial_duplicates),
         "recoverable_bytes": sum(g["wasted_bytes"] for g in plan.duplicate_groups),
         "recoverable_human": _human(sum(g["wasted_bytes"] for g in plan.duplicate_groups)),
         "roots": plan.roots,
