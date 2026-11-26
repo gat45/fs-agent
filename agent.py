@@ -31,13 +31,19 @@ class FilesystemAgent:
         self.previous_scan_id: Optional[int] = None
 
     def scan(self, progress_cb: Optional[Callable[[str, int], None]] = None) -> ScanResult:
-        self.scan_result = scan_roots(self.scan_cfg.roots, self.scan_cfg, progress_cb)
+        def _cb(n):
+            if progress_cb:
+                progress_cb("scan", n)
+        self.scan_result = scan_roots(self.scan_cfg.roots, self.scan_cfg, _cb)
         return self.scan_result
 
     def hash(self, progress_cb: Optional[Callable[[str, int], None]] = None) -> None:
         if self.scan_result is None:
             raise RuntimeError("scan() must be called before hash()")
-        hash_entries(self.scan_result.files, self.scan_cfg, progress_cb)
+        def _cb(n):
+            if progress_cb:
+                progress_cb("hash", n)
+        hash_entries(self.scan_result.files, self.scan_cfg, _cb)
 
     def compare(self) -> ComparePlan:
         if self.scan_result is None:
