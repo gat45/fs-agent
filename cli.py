@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""CLI de l'agent de scan/comparaison de systeme de fichiers."""
+"""CLI de l'agent de scan et comparaison de systeme de fichiers."""
 from __future__ import annotations
 
 import argparse
@@ -28,6 +28,9 @@ def parse_args():
     p.add_argument("--no-hash", action="store_true", help="Ne pas calculer les hashes")
     p.add_argument("--partial-only", action="store_true", help="Partial hash uniquement (plus rapide)")
     p.add_argument("--workers", type=int, default=8, help="Threads de hashing")
+    p.add_argument("--io-threads", type=int, default=2, help="Threads I/O par disque (2 pour HDD, 8+ pour SSD)")
+    p.add_argument("--io-throttle", type=int, default=0, help="Delai en ms entre les lectures (0 = pas de throttle)")
+    p.add_argument("--sequential", action="store_true", help="Mode sequentiel (1 thread, ideal pour HDD)")
     p.add_argument("--exclude", nargs="*", default=None, help="Dossiers/fichiers a exclure (en plus des defauts)")
     p.add_argument("--follow-symlinks", action="store_true")
     p.add_argument("--skip-symlinks", action="store_true", help="Ignorer les liens symboliques")
@@ -35,81 +38,55 @@ def parse_args():
     p.add_argument("--no-unique", action="store_true", help="Ne pas lister les fichiers uniques")
     p.add_argument("--no-by-name", action="store_true", help="Ne pas comparer par nom de fichier")
     p.add_argument("--no-by-size", action="store_true", help="Ne pas grouper par taille")
-    p.add_argument("--io-throttle", type=int, default=0, help="Delai en ms entre les lectures (0 = pas de throttle)")
-    p.add_argument("--dashboard", action="store_true", help="Lancer le dashboard HTML en temps reel")
-    p.add_argument("--progress-file", default=None, help="Fichier progress.json (defaut: reports/progress.json)")
     p.add_argument("--max-depth", type=int, default=None, help="Profondeur max de scan")
-    p.add_argument("--analyze", default=None, help="Analyser un dossier specifique: affiche le plus complet par groupe")
-    p.add_argument("--dest", default="E:\\", help="Disque de destination pour reunir les infos (defaut: E:\\)")
-    p.add_argument("--io-threads", type=int, default=2, help="Threads I/O par disque (2 pour HDD, 8+ pour SSD)")
-    p.add_argument("--sequential", action="store_true", help="Mode sequentiel (1 thread, ideal pour HDD)")
+    p.add_argument("--incremental", action="store_true", help="Scan incrementiel")
+    p.add_argument("--dashboard", action="store_true", help="Lancer le dashboard HTML en temps reel")
+    p.add_argument("--progress-file", default=None, help="Fichier progress.json")
+    p.add_argument("--analyze", default=None, help="Analyser un dossier specifique")
+    p.add_argument("--dest", default="E:\\", help="Disque de destination (defaut: E:\\)")
     return p.parse_args()
 
 
-def analyze_folder(path: str):
-    """Analyse un dossier specifique et affiche le plus complet par groupe."""
-    from consolidation import create_consolidation_plan, format_consolidation_plan, create_full_consolidation_plan
-    import json
+def progress(kind, n):
+    print(f"\r[{kind}] {n} traites...", end="", flush=True)
 
+
+def detect_all_drives():
+    drives = []
+    if os.name == "nt":
+        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+            path = f"{letter}:\\"
+            if os.path.exists(path) and os.path.isdir(path):
+                drives.append(path)
+    else:
+        for p in ["/"]:
+            if os.path.exists(p) and os.path.isdir(p):
+                drives.append(p)
+    return drives
+
+
+def analyze_folder(path: str):
+    from consolidation import create_full_consolidation_plan, format_consolidation_plan
     scan_cfg = ScanConfig(roots=[path], compute_hash=True, workers=8)
     agent = FilesystemAgent(scan_cfg, CompareConfig())
     plan = agent.run()
-
-    # Creer le plan de consolidation
     cplans = create_full_consolidation_plan(plan.duplicate_groups, dest_dir=None)
     print(format_consolidation_plan(cplans))
-
-    # Afficher aussi le plus complet par groupe
     print("\n=== PLUS COMPLET PAR GROUPE ===")
     for g in plan.duplicate_groups:
         mc = g.get("most_complete", {})
         print(f"\nGroupe {g['key'][:16]}... ({g['count']} copies):")
         print(f"  MEILLEUR: {mc.get('path', 'N/A')}")
-        print(f"    Taille: {mc.get('size', 0)} | Date: {mc.get('mtime', 0)}")
         for f in g["files"]:
             marker = " <-- MEILLEUR" if f.get("is_most_complete") else ""
             print(f"  - {f['path']} (taille: {f.get('size', 0)}, date: {f.get('mtime', 0)}){marker}")
-    # Affichage simple
-    print(f"\r[{kind}] {n} traites...", end="", flush=True)
-
-
-def detect_all_drives():
-    """Detecte tous les disques disponibles."""
-    drives = []
-    if os.name == "nt":
-        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-            path = f"{letter}:\\"
-            if os.path.exists(path) and os.path.isdir(path):
-                drives.append(path)
-    else:
-        for p in ["/"]:
-            if os.path.exists(p) and os.path.isdir(p):
-                drives.append(p)
-    return drives
-
-
-def progress(kind, n):
-    # Affichage simple
-    print(f"\r[{kind}] {n} traites...", end="", flush=True)
-    """Detecte tous les disques disponibles."""
-    drives = []
-    if os.name == "nt":
-        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-            path = f"{letter}:\\"
-            if os.path.exists(path) and os.path.isdir(path):
-                drives.append(path)
-    else:
-        for p in ["/"]:
-            if os.path.exists(p) and os.path.isdir(p):
-                drives.append(p)
-    return drives
 
 
 def main():
     args = parse_args()
     ensure_dirs()
 
-    # Mode dashboard: lancer le serveur HTTP
+    # Mode dashboard
     if args.dashboard:
         import subprocess
         subprocess.Popen([sys.executable, "serve_dashboard.py"], cwd=str(Path(__file__).resolve().parent))
@@ -122,6 +99,11 @@ def main():
         progress_file = str(Path(args.output or "E:/agent_fs/reports") / "progress.json")
     else:
         progress_file = None
+
+    # Mode analyse d'un dossier specifique
+    if args.analyze:
+        analyze_folder(args.analyze)
+        return
 
     # Determiner les racines a scanner
     if args.all_drives or not args.roots:
@@ -138,6 +120,17 @@ def main():
     if args.exclude:
         from config import DEFAULT_EXCLUDES
         excludes = list(DEFAULT_EXCLUDES) + list(args.exclude)
+
+    # Auto-detection du type de disque
+    if not args.sequential and args.io_threads == 2:
+        try:
+            from disk_type import optimal_io_threads_multi
+            optimal = optimal_io_threads_multi(roots)
+            if optimal != args.io_threads:
+                print(f"Type de disque detecte: {optimal} threads I/O recommandes")
+                args.io_threads = optimal
+        except Exception:
+            pass
 
     scan_cfg = ScanConfig(
         roots=roots,
@@ -157,8 +150,6 @@ def main():
         io_throttle_ms=args.io_throttle,
         output_dir=args.output,
     )
-    # Si partial-only: on desactive le full hash en mettant compute_hash False
-    # mais on garde partial. On gere via un flag custom.
     if args.partial_only:
         scan_cfg.compute_hash = False
 
@@ -173,13 +164,12 @@ def main():
     agent = FilesystemAgent(scan_cfg, compare_cfg)
 
     def on_listing(sr):
-        print()  # newline apres progress
+        print()
         print("\n=== LISTING TERMINE ===")
         print(f"  Fichiers: {sr.total_files}")
         print(f"  Dossiers: {len(sr.dirs)}")
         print(f"  Taille totale: {_human(sr.total_size)}")
         print(f"  Erreurs d'acces: {len(sr.errors)}")
-        # Par disque
         by_drive = {}
         for f in sr.files:
             by_drive.setdefault(f.drive, {"files": 0, "size": 0})
@@ -193,7 +183,7 @@ def main():
 
     print(f"Scan de: {', '.join(roots)}")
     plan = agent.run(progress_cb=progress, on_listing_complete=on_listing, progress_file=progress_file)
-    print()  # newline apres progress
+    print()
 
     print("\n=== RESUME COMPARAISON ===")
     print(f"Fichiers: {plan.summary['total_files']}")
