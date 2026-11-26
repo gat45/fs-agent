@@ -135,6 +135,10 @@ def scan_one_root(root: str, cfg: ScanConfig,
 
     dir_map: Dict[str, DirEntry] = {}
     excludes = cfg.excludes or []
+    # Exclure les artefacts generes par l'agent (cache, reports, logs)
+    # pour eviter l'auto-inclusion dans l'inventaire
+    agent_artifacts = {"cache", "reports", "logs", "progress.json", "hash_cache.sqlite", "dir_cache.sqlite", "scan_history.sqlite"}
+    excludes = list(excludes) + [a for a in agent_artifacts if a not in excludes]
 
     dir_cache = None
     if cfg.incremental:

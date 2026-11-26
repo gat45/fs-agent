@@ -26,16 +26,22 @@ def _sanitize_csv(value):
 def write_json(plan: ComparePlan, out_dir: Path, name: str = "plan") -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{name}_{_ts()}.json"
-    path.write_text(json.dumps(plan.to_dict(), indent=2, ensure_ascii=False, default=str),
-                    encoding="utf-8")
+    try:
+        path.write_text(json.dumps(plan.to_dict(), indent=2, ensure_ascii=False, default=str),
+                        encoding="utf-8")
+    except (OSError, IOError, TypeError) as e:
+        raise RuntimeError(f"Erreur d'ecriture JSON: {e}") from e
     return path
 
 
 def write_inventory_json(scan_dict: dict, out_dir: Path, name: str = "inventory") -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{name}_{_ts()}.json"
-    path.write_text(json.dumps(scan_dict, indent=2, ensure_ascii=False, default=str),
-                    encoding="utf-8")
+    try:
+        path.write_text(json.dumps(scan_dict, indent=2, ensure_ascii=False, default=str),
+                        encoding="utf-8")
+    except (OSError, IOError, TypeError) as e:
+        raise RuntimeError(f"Erreur d'ecriture inventaire JSON: {e}") from e
     return path
 
 

@@ -143,6 +143,22 @@ def main():
     args = parse_args()
     ensure_dirs()
 
+    # Validation des arguments
+    if args.min_size < 0:
+        args.min_size = 0
+    if args.max_size is not None and args.max_size < args.min_size:
+        args.max_size = None
+    if args.workers < 1:
+        args.workers = 1
+    if args.io_threads < 1:
+        args.io_threads = 1
+    if args.io_throttle < 0:
+        args.io_throttle = 0
+    if args.max_depth is not None and args.max_depth < 1:
+        args.max_depth = None
+    if args.min_dup < 2:
+        args.min_dup = 2
+
     # Charger la configuration depuis un fichier si specifie
     from config_file import load_config
     file_cfg = load_config(Path(args.config) if args.config else None)

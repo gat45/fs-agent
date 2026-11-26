@@ -62,18 +62,24 @@ def list_azure_files(container_url: str, prefix: str = "", max_files: int = 1000
     """Liste les fichiers d'un container Azure Blob."""
     if not HAS_AZURE:
         raise ImportError("azure-storage-blob non installe. pip install azure-storage-blob")
-    client = BlobServiceClient(account_url=container_url)
-    container = client.get_container_client(container_url.split("/")[-1])
+    try:
+        client = BlobServiceClient(account_url=container_url)
+        container = client.get_container_client(container_url.split("/")[-1])
+    except Exception as e:
+        raise RuntimeError(f"Erreur de connexion Azure: {e}")
     files = []
-    for blob in container.list_blobs(name_starts_with=prefix):
-        files.append({
-            "path": f"azure://{container_url}/{blob.name}",
-            "size": blob.size,
-            "mtime": blob.last_modified.timestamp() if blob.last_modified else 0,
-            "ext": os.path.splitext(blob.name)[1].lower(),
-        })
-        if len(files) >= max_files:
-            return files
+    try:
+        for blob in container.list_blobs(name_starts_with=prefix):
+            files.append({
+                "path": f"azure://{container_url}/{blob.name}",
+                "size": blob.size,
+                "mtime": blob.last_modified.timestamp() if blob.last_modified else 0,
+                "ext": os.path.splitext(blob.name)[1].lower(),
+            })
+            if len(files) >= max_files:
+                return files
+    except Exception as e:
+        raise RuntimeError(f"Erreur lors du listing Azure: {e}")
     return files
 
 
@@ -81,18 +87,24 @@ def list_gcs_files(bucket_name: str, prefix: str = "", max_files: int = 100000) 
     """Liste les fichiers d'un bucket GCS."""
     if not HAS_GCS:
         raise ImportError("google-cloud-storage non installe. pip install google-cloud-storage")
-    client = gcs_storage.Client()
-    bucket = client.bucket(bucket_name)
+    try:
+        client = gcs_storage.Client()
+        bucket = client.bucket(bucket_name)
+    except Exception as e:
+        raise RuntimeError(f"Erreur de connexion GCS: {e}")
     files = []
-    for blob in bucket.list_blobs(prefix=prefix):
-        files.append({
-            "path": f"gs://{bucket_name}/{blob.name}",
-            "size": blob.size,
-            "mtime": blob.updated.timestamp() if blob.updated else 0,
-            "ext": os.path.splitext(blob.name)[1].lower(),
-        })
-        if len(files) >= max_files:
-            return files
+    try:
+        for blob in bucket.list_blobs(prefix=prefix):
+            files.append({
+                "path": f"gs://{bucket_name}/{blob.name}",
+                "size": blob.size,
+                "mtime": blob.updated.timestamp() if blob.updated else 0,
+                "ext": os.path.splitext(blob.name)[1].lower(),
+            })
+            if len(files) >= max_files:
+                return files
+    except Exception as e:
+        raise RuntimeError(f"Erreur lors du listing GCS: {e}")
     return files
 
 
