@@ -118,28 +118,32 @@ def fastcdc_chunks(filepath: str, min_size: int = MIN_CHUNK_SIZE,
     return chunks
 
 
-def compare_files_cdc(path1: str, path2: str) -> Dict:
-    """Compare deux fichiers avec CDC et retourne le pourcentage de chunks communs.
+# Cache global des chunks
+_CHUNKS_CACHE = {}
 
-    Utilise des compteurs (pas des ensembles) pour preserver les occurrences.
-    """
-    chunks1 = fastcdc_chunks(path1)
-    chunks2 = fastcdc_chunks(path2)
+
+def _get_chunks_cached(filepath: str) -> List[Tuple[int, int, str]]:
+    """Retourne les chunks d'un fichier, avec cache."""
+    if filepath not in _CHUNKS_CACHE:
+        _CHUNKS_CACHE[filepath] = fastcdc_chunks(filepath)
+    return _CHUNKS_CACHE[filepath]
+
+
+def compare_files_cdc(path1: str, path2: str) -> Dict:
+    """Compare deux fichiers avec CDC et retourne le pourcentage de chunks communs."""
+    chunks1 = _get_chunks_cached(path1)
+    chunks2 = _get_chunks_cached(path2)
 
     if not chunks1 or not chunks2:
         return {"similarity": 0.0, "common_chunks": 0, "total_chunks": 0,
                 "chunks1": len(chunks1), "chunks2": len(chunks2)}
 
-    # Compter les occurrences de chaque hash
     from collections import Counter
     counts1 = Counter(c[2] for c in chunks1)
     counts2 = Counter(c[2] for c in chunks2)
 
-    # Chunks communs: min des occurrences
     common_hashes = set(counts1.keys()) & set(counts2.keys())
     common_count = sum(min(counts1[h], counts2[h]) for h in common_hashes)
-
-    # Total: union des occurrences
     total_count = sum(counts1.values()) + sum(counts2.values()) - common_count
 
     similarity = common_count / total_count if total_count > 0 else 0.0
@@ -158,19 +162,42 @@ def compare_files_cdc(path1: str, path2: str) -> Dict:
 
 
 def find_partial_duplicates(files: List[str], threshold: float = 0.5) -> List[Dict]:
-    """Trouve les fichiers partiellement dupliques (similarite >= threshold)."""
+    """Trouve les fichiers partiellement dupliques (similarite >= threshold).
+
+    Optimisation: calcule les chunks de chaque fichier une seule fois
+    et utilise un cache pour eviter les recalculs.
+    """
+    # Cache des chunks par fichier
+    chunks_cache = {}
+    def get_chunks(path):
+        if path not in chunks_cache:
+            chunks_cache[path] = fastcdc_chunks(path)
+        return chunks_cache[path]
+
+    # Pre-calculer les hashes de chunks pour chaque fichier
+    file_hashes = {}
+    for f in files:
+        chunks = get_chunks(f)
+        file_hashes[f] = {c[2] for c in chunks}
+
     results = []
     for i in range(len(files)):
         for j in range(i + 1, len(files)):
             try:
-                cmp = compare_files_cdc(files[i], files[j])
-                if cmp["similarity"] >= threshold:
+                h1 = file_hashes[files[i]]
+                h2 = file_hashes[files[j]]
+                if not h1 or not h2:
+                    continue
+                common = h1 & h2
+                total = len(h1 | h2)
+                similarity = len(common) / total if total > 0 else 0.0
+                if similarity >= threshold:
                     results.append({
                         "file1": files[i],
                         "file2": files[j],
-                        "similarity": cmp["similarity"],
-                        "common_chunks": cmp["common_chunks"],
-                        "total_chunks": cmp["total_chunks"],
+                        "similarity": round(similarity, 4),
+                        "common_chunks": len(common),
+                        "total_chunks": total,
                     })
             except Exception:
                 pass
