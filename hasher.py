@@ -266,3 +266,11 @@ def hash_entries(entries: List, cfg: ScanConfig,
                 f.result()
             except Exception:
                 pass
+
+    # Batch commit: une seule transaction pour tous les fichiers
+    try:
+        with _DB_LOCK:
+            conn = cache._conn()
+            conn.commit()
+    except Exception:
+        pass

@@ -93,7 +93,11 @@ class DirCache:
 
 
 def get_changed_dirs(root: str, cache: DirCache) -> Set[str]:
-    """Retourne l'ensemble des dossiers modifies depuis le dernier scan."""
+    """Retourne l'ensemble des dossiers modifies depuis le dernier scan.
+
+    Optimisation: ne fait qu'un seul os.walk et utilise le cache pour
+    determiner quels dossiers ont change.
+    """
     changed = set()
     try:
         for dirpath, dirnames, _ in os.walk(root):

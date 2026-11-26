@@ -113,16 +113,28 @@ def compare_md_files(path1: str, path2: str) -> Dict:
 
 
 def find_similar_md(files: List[str], threshold: float = 0.5) -> List[Tuple[str, str, float]]:
-    """Trouve les paires de fichiers Markdown similaires (similarite >= threshold)."""
+    """Trouve les paires de fichiers Markdown similaires (similarite >= threshold).
+
+    Optimisation: pre-calculer les contenus et les hashes pour eviter
+    de relire les fichiers a chaque comparaison.
+    """
     md_files = [f for f in files if f.lower().endswith(".md")]
+    # Pre-calculer les contenus
+    contents = {}
+    for f in md_files:
+        contents[f] = read_text_file(f)
+    # Pre-filtrer par taille (les fichiers de tailles tres differentes ne sont pas similaires)
     pairs = []
     for i in range(len(md_files)):
         for j in range(i + 1, len(md_files)):
-            content1 = read_text_file(md_files[i])
-            content2 = read_text_file(md_files[j])
-            if content1 is None or content2 is None:
+            c1 = contents.get(md_files[i])
+            c2 = contents.get(md_files[j])
+            if c1 is None or c2 is None:
                 continue
-            sim = difflib.SequenceMatcher(None, content1, content2).ratio()
+            # Pre-filtre: difference de taille > 50% -> pas similaire
+            if abs(len(c1) - len(c2)) > max(len(c1), len(c2)) * 0.5:
+                continue
+            sim = difflib.SequenceMatcher(None, c1, c2).ratio()
             if sim >= threshold:
                 pairs.append((md_files[i], md_files[j], round(sim, 4)))
     pairs.sort(key=lambda x: -x[2])
