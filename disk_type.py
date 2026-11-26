@@ -51,14 +51,30 @@ def detect_disk_type(path: str) -> str:
             return "unknown"
 
         for disk in disks:
-            if disk.get("DeviceId") == disk_num:
-                media_type = disk.get("MediaType", 0)
-                # 3 = HDD, 4 = SSD, 5 = SCM
-                if media_type == 4 or media_type == 5:
-                    return "ssd"
-                elif media_type == 3:
-                    return "hdd"
-                return "unknown"
+            if str(disk.get("DeviceId")) == str(disk_num):
+                media_type = disk.get("MediaType", "Unspecified")
+                # MediaType peut etre un nombre ou une chaine
+                if isinstance(media_type, str):
+                    mt = media_type.upper()
+                    if "SSD" in mt or "SCM" in mt:
+                        return "ssd"
+                    elif "HDD" in mt:
+                        return "hdd"
+                    # Unspecified: deviner par le nom
+                    name = disk.get("FriendlyName", "").upper()
+                    if "SSD" in name:
+                        return "ssd"
+                    # HDD connus
+                    hdd_keywords = ["TOSHIBA MQ", "SEAGATE", "WD", "HGST", "HITACHI", "MQ01", "ST1000", "ST2000"]
+                    if any(kw in name for kw in hdd_keywords):
+                        return "hdd"
+                    return "unknown"
+                else:
+                    if media_type == 4 or media_type == 5:
+                        return "ssd"
+                    elif media_type == 3:
+                        return "hdd"
+                    return "unknown"
     except Exception:
         pass
     return "unknown"
