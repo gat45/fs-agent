@@ -48,7 +48,9 @@ def _group_by_content(files) -> Dict[str, List]:
     for f in files:
         key = f.full_hash or f.partial_hash
         if key is None:
-            key = f"__nohash__:{f.path}"
+            # Pas de hash disponible: ne pas grouper (chaque fichier est unique)
+            # pour eviter les faux doublons
+            continue
         g[key].append(f)
     return g
 
@@ -61,7 +63,7 @@ def _human(n: int) -> str:
     return f"{n:.1f} Po"
 
 
-def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_scan_id=None) -> ComparePlan:
+def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_scan_id=None, current_scan_id=None) -> ComparePlan:
     plan = ComparePlan(roots=sorted({f.root for f in files}),
                        total_files=len(files),
                        total_size=sum(f.size for f in files))
@@ -340,7 +342,8 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             diff = history.compare_scans(previous_scan_id, history.get_last_scan(scan_result.roots if scan_result else None)["scan_id"])
             plan.scan_diff = {
                 "previous_scan_id": previous_scan_id,
-                "current_scan_id": diff.get("new_total", 0),
+                "current_scan_id": current_scan_id if current_scan_id is not None else diff.get("new_total", 0),
+                "files_added": len(diff.get("added", [])),
                 "files_added": len(diff.get("added", [])),
                 "files_removed": len(diff.get("removed", [])),
                 "files_modified": len(diff.get("modified", [])),

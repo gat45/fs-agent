@@ -36,19 +36,25 @@ def list_s3_files(bucket: str, prefix: str = "", max_files: int = 100000) -> Lis
     """Liste les fichiers d'un bucket S3."""
     if not HAS_S3:
         raise ImportError("boto3 non installe. pip install boto3")
-    s3 = boto3.client("s3")
+    try:
+        s3 = boto3.client("s3")
+    except Exception as e:
+        raise RuntimeError(f"Erreur de connexion S3: {e}")
     files = []
-    paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            files.append({
-                "path": f"s3://{bucket}/{obj['Key']}",
-                "size": obj["Size"],
-                "mtime": obj["LastModified"].timestamp(),
-                "ext": os.path.splitext(obj["Key"])[1].lower(),
-            })
-            if len(files) >= max_files:
-                return files
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                files.append({
+                    "path": f"s3://{bucket}/{obj['Key']}",
+                    "size": obj["Size"],
+                    "mtime": obj["LastModified"].timestamp(),
+                    "ext": os.path.splitext(obj["Key"])[1].lower(),
+                })
+                if len(files) >= max_files:
+                    return files
+    except Exception as e:
+        raise RuntimeError(f"Erreur lors du listing S3: {e}")
     return files
 
 

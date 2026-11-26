@@ -69,14 +69,16 @@ def _read_file(path: str, max_bytes: int = 5000) -> str:
         return "[Impossible de lire le fichier]"
 
 
-def analyze_with_opencode(prompt: str, model: str = None) -> Optional[str]:
+def analyze_with_opencode(prompt: str, model: str = None, timeout: int = 120) -> Optional[str]:
     """Analyse avec OpenCode CLI."""
     if not HAS_OPENCODE:
         return "OpenCode non installe. Installez-le depuis https://opencode.ai"
 
-    # Si c'est un .ps1, utiliser PowerShell
+    # Si c'est un .ps1 ou .cmd, utiliser le bon interpreteur
     if OPENCODE_PATH.endswith(".ps1"):
         cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", OPENCODE_PATH, "run", prompt]
+    elif OPENCODE_PATH.endswith(".cmd"):
+        cmd = [OPENCODE_PATH, "run", prompt]
     else:
         cmd = [OPENCODE_PATH, "run", prompt]
 
@@ -88,7 +90,7 @@ def analyze_with_opencode(prompt: str, model: str = None) -> Optional[str]:
             cmd,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=timeout,
             encoding="utf-8",
             errors="replace",
         )
@@ -97,7 +99,7 @@ def analyze_with_opencode(prompt: str, model: str = None) -> Optional[str]:
         else:
             return f"Erreur OpenCode (code {result.returncode}): {result.stderr.strip()}"
     except subprocess.TimeoutExpired:
-        return "Timeout: l'analyse a pris plus de 120 secondes."
+        return f"Timeout: l'analyse a pris plus de {timeout} secondes."
     except Exception as e:
         return f"Erreur: {e}"
 

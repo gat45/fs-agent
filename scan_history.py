@@ -168,7 +168,15 @@ class ScanHistory:
                 added.append(f)
             else:
                 old = old_files[path]
+                # Comparer size, mtime ET hash (si disponible)
+                changed = False
                 if old["size"] != f["size"] or old["mtime"] != f["mtime"]:
+                    changed = True
+                elif old.get("full_hash") and f.get("full_hash") and old["full_hash"] != f["full_hash"]:
+                    changed = True
+                elif old.get("partial_hash") and f.get("partial_hash") and old["partial_hash"] != f["partial_hash"]:
+                    changed = True
+                if changed:
                     modified.append({"old": old, "new": f})
                 else:
                     unchanged.append(f)

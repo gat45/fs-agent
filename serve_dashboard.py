@@ -6,7 +6,6 @@ import sys
 import json
 import threading
 import subprocess
-import signal
 from pathlib import Path
 
 PORT = 8766
@@ -54,15 +53,6 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data).encode("utf-8"))
 
-    def _get_progress(self):
-        try:
-            if os.path.exists(PROGRESS_FILE):
-                with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception:
-            pass
-        return {"phase": "idle", "total_files": 0, "total_dirs": 0, "total_size": 0, "errors": 0, "by_drive": {}, "last_message": "En attente..."}
-
     def _get_status(self):
         global SCAN_PROCESS
         if SCAN_PROCESS is not None:
@@ -74,15 +64,22 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 return {"running": False, "exit_code": poll}
         return {"running": False}
 
+    def _get_progress(self):
+        try:
+            if os.path.exists(PROGRESS_FILE):
+                with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return {"phase": "idle", "total_files": 0, "total_dirs": 0, "total_size": 0, "errors": 0, "by_drive": {}, "last_message": "En attente..."}
+
     def _browse(self, path):
-        """Liste les dossiers d'un chemin pour le selecteur."""
         import urllib.parse
         parsed = urllib.parse.urlparse(path)
         params = urllib.parse.parse_qs(parsed.query)
         browse_path = params.get("path", [""])[0]
 
         if not browse_path:
-            # Racine: lister les disques
             drives = []
             for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
                 p = f"{letter}:\\"
@@ -103,16 +100,11 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             return {"error": str(e), "path": browse_path, "items": []}
 
-        # Limiter a 100 entrees
         items = items[:100]
-        return {"path": browse_path, "items": items, "parent": os.path.dirname(browse_path) if browse_path not in ("", "\\") else None}
-        try:
-            if os.path.exists(PROGRESS_FILE):
-                with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception:
-            pass
-        return {"phase": "idle", "total_files": 0, "total_dirs": 0, "total_size": 0, "errors": 0, "by_drive": {}, "last_message": "En attente..."}
+        parent = os.path.dirname(browse_path) if browse_path not in ("", "\\") else None
+        if parent == browse_path:
+            parent = None
+        return {"path": browse_path, "items": items, "parent": parent}
 
     def _start_scan(self, data):
         global SCAN_PROCESS
@@ -120,26 +112,36 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             return {"error": "Un scan est deja en cours"}
 
         roots = data.get("roots", [])
+        if not isinstance(roots, list):
+            roots = [str(roots)]
+        roots = [r for r in roots if isinstance(r, str) and len(r) > 0][:6]
+
         if not roots:
-            # Detecter tous les disques
             for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
                 path = f"{letter}:\\"
                 if os.path.exists(path) and os.path.isdir(path):
                     roots.append(path)
+                    if len(roots) >= 6:
+                        break
 
         if not roots:
             return {"error": "Aucun disque detecte"}
 
-        # Construire la commande
+        workers = data.get("workers", 8)
+        if not isinstance(workers, int) or workers < 1 or workers > 64:
+            workers = 8
+        max_depth = data.get("max_depth")
+        if max_depth is not None and (not isinstance(max_depth, int) or max_depth < 1):
+            max_depth = None
+
         cmd = [sys.executable, "cli.py"] + roots
         if data.get("partial_only"):
             cmd.append("--partial-only")
         if data.get("no_hash"):
             cmd.append("--no-hash")
-        if data.get("max_depth"):
-            cmd.extend(["--max-depth", str(data["max_depth"])])
-        if data.get("workers"):
-            cmd.extend(["--workers", str(data["workers"])])
+        if max_depth:
+            cmd.extend(["--max-depth", str(max_depth)])
+        cmd.extend(["--workers", str(workers)])
         if data.get("sequential"):
             cmd.append("--sequential")
         if data.get("io_threads"):
@@ -147,14 +149,12 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
         if data.get("dashboard"):
             cmd.append("--dashboard")
 
-        # Fichier de progression
         cmd.extend(["--progress-file", PROGRESS_FILE])
-
-        # Output dir
         out_dir = data.get("output", os.path.join(DIR, "reports"))
+        if not isinstance(out_dir, str):
+            out_dir = os.path.join(DIR, "reports")
         cmd.extend(["--output", out_dir])
 
-        # Lancer le scan
         try:
             SCAN_PROCESS = subprocess.Popen(cmd, cwd=DIR, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return {"started": True, "pid": SCAN_PROCESS.pid, "roots": roots, "cmd": " ".join(cmd)}

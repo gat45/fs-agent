@@ -49,7 +49,7 @@ class FilesystemAgent:
         if self.scan_result is None:
             raise RuntimeError("scan() must be called before compare()")
         self.plan = compare(self.scan_result.files, self.compare_cfg, self.scan_result,
-                            self.history, self.previous_scan_id)
+                            self.history, self.previous_scan_id, self.scan_id)
         return self.plan
 
     def run(self, progress_cb: Optional[Callable[[str, int], None]] = None,
@@ -62,12 +62,17 @@ class FilesystemAgent:
             # Etape 1: LISTING
             self.scan(progress_cb)
             out_dir = self.scan_cfg.resolved_output_dir()
-            # Sauvegarder dans l'historique (memoire persistante)
+            # Sauvegarder dans l'historique (memoire persistante) - APRES le hash
+            # pour que les empreintes soient disponibles
             self.previous_scan_id = None
             try:
                 last = self.history.get_last_scan(self.scan_cfg.roots)
                 if last:
                     self.previous_scan_id = last["scan_id"]
+            except Exception:
+                pass
+            # Sauvegarder dans l'historique APRES le hash
+            try:
                 self.scan_id = self.history.save_scan(self.scan_result, round(time.time() - t0, 2))
             except Exception:
                 pass

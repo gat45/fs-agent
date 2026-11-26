@@ -139,13 +139,18 @@ def merge_md_files(path1: str, path2: str, output_path: str) -> bool:
     sections1 = extract_md_sections(content1)
     sections2 = extract_md_sections(content2)
 
-    # Union des sections
+    # Union des sections (gerer les sections avec le meme nom)
     all_sections = {}
-    all_headers = list(sections1.keys()) + [h for h in sections2.keys() if h not in sections1]
+    all_headers = []
+    # Garder l'ordre d'apparition
+    seen_headers = set()
+    for h in list(sections1.keys()) + list(sections2.keys()):
+        if h not in seen_headers:
+            seen_headers.add(h)
+            all_headers.append(h)
 
     for h in all_headers:
         if h in sections1 and h in sections2:
-            # Fusionner le contenu (garder le plus long)
             if len(sections1[h]) >= len(sections2[h]):
                 all_sections[h] = sections1[h]
             else:

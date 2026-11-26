@@ -118,7 +118,8 @@ class ScanResult:
 
 
 def scan_one_root(root: str, cfg: ScanConfig,
-                  progress_cb: Optional[Callable[[int], None]] = None) -> ScanResult:
+                  progress_cb: Optional[Callable[[int], None]] = None,
+                  visited_inodes: Optional[set] = None) -> ScanResult:
     """Scanne une seule racine."""
     res = ScanResult(roots=[root])
     res.started_at = time.time()
@@ -147,7 +148,7 @@ def scan_one_root(root: str, cfg: ScanConfig,
         except Exception:
             pass
 
-    visited_inodes = set()
+    visited_inodes = set() if visited_inodes is None else visited_inodes
 
     try:
         for dirpath, dirnames, filenames in os.walk(access_root, followlinks=cfg.follow_symlinks):
@@ -268,8 +269,9 @@ def scan_roots(roots: List[str], cfg: ScanConfig,
     merged = ScanResult(roots=list(roots))
     merged.started_at = time.time()
     seen_paths = set()
+    visited_inodes = set()  # Partage entre toutes les racines pour detecter les cycles
     for r in roots:
-        sub = scan_one_root(r, cfg, progress_cb)
+        sub = scan_one_root(r, cfg, progress_cb, visited_inodes)
         for f in sub.files:
             if f.path in seen_paths:
                 continue
