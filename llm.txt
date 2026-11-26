@@ -1,0 +1,38 @@
+﻿Scan de: E:\agent_test\a, E:\agent_test\b
+
+
+=== LISTING TERMINE ===
+  Fichiers: 2
+  Dossiers: 2
+  Taille totale: 26.0 B
+  Erreurs d'acces: 2
+  Disque E: 2 fichiers, 26.0 B
+  Inventaire sauvegarde: E:\agent_fs\reports\inventory_20261126_205312.json
+
+--- Comparaison en cours ---
+
+
+=== RESUME COMPARAISON ===
+Fichiers: 2
+Taille totale: 26.0 B
+Groupes de taille: 1
+Groupes de doublons: 1 (cross-disque: 1)
+Fichiers uniques: 0
+Groupes meme nom: 0
+Dossiers miroirs: 0
+Dossiers vides: 0
+Liens casses: 0
+Dossiers dupliques: 0
+Espace recuperable: 13.0 B
+
+Rapport LLM sauvegarde: E:/agent_fs/reports\llm_analysis.md
+
+Exports:
+  inventory_json: E:\agent_fs\reports\inventory_20261126_205312.json
+  inventory_csv: E:\agent_fs\reports\inventory_20261126_205312.csv
+  plan_json: E:\agent_fs\reports\plan_20261126_205313.json
+  duplicates_csv: E:\agent_fs\reports\duplicates_20261126_205313.csv
+  unique_csv: E:\agent_fs\reports\unique_20261126_205313.csv
+  report_md: E:\agent_fs\reports\report_20261126_205313.md
+  report_xlsx: E:\agent_fs\reports\report_20261126_205315.xlsx
+  elapsed_sec: 2.35

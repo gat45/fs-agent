@@ -12,8 +12,19 @@ import shutil
 from pathlib import Path
 from typing import List, Dict, Optional
 
-# Verifier si OpenCode est disponible
+# Chercher opencode dans le PATH
 OPENCODE_PATH = shutil.which("opencode")
+if OPENCODE_PATH is None:
+    # Chercher dans les chemins courants
+    for candidate in [
+        "C:/Users/videl/AppData/Roaming/npm/opencode.cmd",
+        "C:/Users/videl/AppData/Roaming/npm/opencode.ps1",
+        "C:/Users/videl/AppData/Roaming/npm/opencode",
+    ]:
+        if os.path.exists(candidate):
+            OPENCODE_PATH = candidate
+            break
+
 HAS_OPENCODE = OPENCODE_PATH is not None
 
 
@@ -63,7 +74,12 @@ def analyze_with_opencode(prompt: str, model: str = None) -> Optional[str]:
     if not HAS_OPENCODE:
         return "OpenCode non installe. Installez-le depuis https://opencode.ai"
 
-    cmd = ["opencode", "run", prompt]
+    # Si c'est un .ps1, utiliser PowerShell
+    if OPENCODE_PATH.endswith(".ps1"):
+        cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", OPENCODE_PATH, "run", prompt]
+    else:
+        cmd = [OPENCODE_PATH, "run", prompt]
+
     if model:
         cmd.extend(["--model", model])
 

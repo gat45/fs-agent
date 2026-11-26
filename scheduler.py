@@ -19,10 +19,10 @@ def create_windows_task(script_path: str, schedule: str = "daily", time: str = "
     cmd = [
         "schtasks", "/create",
         "/tn", TASK_NAME,
-        "/tr", f'python "{script_path}" --all-drives --partial-only',
+        "/tr", f'cmd /c "cd /d E:\\agent_fs && python cli.py --all-drives --partial-only"',
         "/sc", schedule,
         "/st", time,
-        "/f",  # forcer si existe deja
+        "/f",
     ]
 
     try:
