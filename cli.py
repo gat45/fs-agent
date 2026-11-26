@@ -42,7 +42,10 @@ def parse_args():
     p.add_argument("--incremental", action="store_true", help="Scan incrementiel")
     p.add_argument("--dashboard", action="store_true", help="Lancer le dashboard HTML en temps reel")
     p.add_argument("--progress-file", default=None, help="Fichier progress.json")
-    p.add_argument("--dest", default="E:\\", help="Disque de destination (defaut: E:\\)")
+    p.add_argument("--llm-analyze", default=None, help="Analyser avec un LLM (openai/anthropic)")
+    p.add_argument("--schedule", default=None, help="Planifier un scan automatique (daily/weekly)")
+    p.add_argument("--cloud", default=None, help="Scanner un bucket cloud (s3://bucket, azure://container, gs://bucket)")
+    p.add_argument("--analyze", default=None, help="Analyser un dossier specifique")
     p.add_argument("--compare-md", action="store_true", help="Comparer les rapports Markdown et fichiers texte similaires")
     p.add_argument("--config", default=None, help="Fichier de configuration JSON")
     p.add_argument("--interactive", action="store_true", help="Mode interactif (choisir fichier par fichier)")
@@ -93,7 +96,8 @@ def interactive_mode(plan, agent):
     print(f"\r[{kind}] {n} traites...", end="", flush=True)
 
 
-def detect_all_drives():
+def progress(kind, n):
+    print(f"\r[{kind}] {n} traites...", end="", flush=True)
     drives = []
     if os.name == "nt":
         for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":

@@ -6,50 +6,18 @@
 <title>FS-Agent Dashboard</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    background: #0f1117;
-    color: #e0e0e0;
-    padding: 20px;
-  }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e0e0e0; padding: 20px; }
   h1 { color: #58a6ff; margin-bottom: 20px; font-size: 1.8em; }
   h2 { color: #79c0ff; margin: 20px 0 10px; font-size: 1.2em; }
-  .card {
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 16px;
-  }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
   .stat { text-align: center; }
   .stat-value { font-size: 2.4em; font-weight: 700; color: #58a6ff; }
   .stat-label { color: #8b949e; font-size: 0.9em; margin-top: 4px; }
-  .progress-bar {
-    width: 100%;
-    height: 24px;
-    background: #21262d;
-    border-radius: 12px;
-    overflow: hidden;
-    margin: 8px 0;
-  }
-  .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #238636, #2ea043);
-    border-radius: 12px;
-    transition: width 0.5s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: 600;
-    font-size: 0.85em;
-  }
+  .progress-bar { width: 100%; height: 24px; background: #21262d; border-radius: 12px; overflow: hidden; margin: 8px 0; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #238636, #2ea043); border-radius: 12px; transition: width 0.5s ease; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 0.85em; }
   .phase { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
-  .phase-dot {
-    width: 12px; height: 12px; border-radius: 50%;
-    background: #30363d;
-  }
+  .phase-dot { width: 12px; height: 12px; border-radius: 50%; background: #30363d; }
   .phase-dot.active { background: #2ea043; box-shadow: 0 0 8px #2ea043; }
   .phase-dot.done { background: #58a6ff; }
   .phase-label { flex: 1; }
@@ -64,10 +32,47 @@
   .log-time { color: #8b949e; }
   .refresh { color: #8b949e; font-size: 0.8em; text-align: right; margin-top: 10px; }
   .no-data { color: #8b949e; font-style: italic; padding: 20px; text-align: center; }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .controls input[type="text"] { flex: 1; min-width: 200px; padding: 8px 12px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #e0e0e0; font-size: 0.9em; }
+  .controls button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9em; }
+  .btn-start { background: #238636; color: white; }
+  .btn-start:hover { background: #2ea043; }
+  .btn-stop { background: #da3633; color: white; }
+  .btn-stop:hover { background: #f85149; }
+  .btn-stop:disabled { background: #30363d; cursor: not-allowed; }
+  .btn-start:disabled { background: #30363d; cursor: not-allowed; }
+  .options { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+  .option { display: flex; align-items: center; gap: 6px; font-size: 0.9em; color: #8b949e; }
+  .option input { accent-color: #58a6ff; }
+  .status-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #21262d; border-radius: 6px; margin-bottom: 10px; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #30363d; }
+  .status-dot.running { background: #2ea043; box-shadow: 0 0 8px #2ea043; animation: pulse 1.5s infinite; }
+  .status-dot.idle { background: #8b949e; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 </style>
 </head>
 <body>
 <h1>🔍 FS-Agent Dashboard</h1>
+
+<div class="card">
+  <h2>Contrôles</h2>
+  <div class="status-bar">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">En attente</span>
+  </div>
+  <div class="controls">
+    <input type="text" id="roots" placeholder="Dossiers à scanner (ex: C:\ D:\ E:\) ou laisser vide pour tous les disques" />
+    <button class="btn-start" id="btn-start" onclick="startScan()">▶ Lancer</button>
+    <button class="btn-stop" id="btn-stop" onclick="stopScan()" disabled>⏹ Arrêter</button>
+  </div>
+  <div class="options">
+    <label class="option"><input type="checkbox" id="partial-only" /> Partial hash (rapide)</label>
+    <label class="option"><input type="checkbox" id="no-hash" /> Pas de hash</label>
+    <label class="option"><input type="checkbox" id="sequential" /> Séquentiel (HDD)</label>
+    <label class="option">Workers: <input type="number" id="workers" value="8" min="1" max="32" style="width:50px" /></label>
+    <label class="option">Profondeur max: <input type="number" id="max-depth" value="" min="1" max="50" style="width:50px" placeholder="∞" /></label>
+  </div>
+</div>
 
 <div class="grid">
   <div class="card stat">
@@ -110,7 +115,7 @@
   </div>
   <div class="phase">
     <div class="phase-dot" id="phase-export"></div>
-    <span class="phase-label">4. Export (JSON, CSV, Markdown, plan)</span>
+    <span class="phase-label">4. Export (JSON, CSV, Markdown, Excel)</span>
     <span class="phase-status" id="phase-export-status">En attente</span>
   </div>
 </div>
@@ -138,13 +143,14 @@
   <div class="log" id="log"></div>
 </div>
 
-<div class="refresh">Mise à jour automatique toutes les 2 secondes</div>
+<div class="refresh">Mise à jour automatique toutes les 2 secondes | FS-Agent v1.0</div>
 
 <script>
-const PROGRESS_FILE = 'progress.json';
+const API = '';
 let startTime = Date.now();
 let lastFiles = 0;
 let lastTime = Date.now();
+let isRunning = false;
 
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
@@ -162,16 +168,10 @@ function formatTime(seconds) {
 function updatePhase(phase, status) {
   const dot = document.getElementById('phase-' + phase);
   const st = document.getElementById('phase-' + phase + '-status');
-  if (status === 'active') {
-    dot.className = 'phase-dot active';
-    st.textContent = 'En cours...';
-  } else if (status === 'done') {
-    dot.className = 'phase-dot done';
-    st.textContent = 'Terminé ✓';
-  } else {
-    dot.className = 'phase-dot';
-    st.textContent = 'En attente';
-  }
+  if (!dot || !st) return;
+  if (status === 'active') { dot.className = 'phase-dot active'; st.textContent = 'En cours...'; }
+  else if (status === 'done') { dot.className = 'phase-dot done'; st.textContent = 'Terminé ✓'; }
+  else { dot.className = 'phase-dot'; st.textContent = 'En attente'; }
 }
 
 function addLog(msg) {
@@ -182,41 +182,110 @@ function addLog(msg) {
   entry.innerHTML = `<span class="log-time">[${time}]</span> ${msg}`;
   log.appendChild(entry);
   log.scrollTop = log.scrollHeight;
-  // Garder max 50 entrées
   while (log.children.length > 50) log.removeChild(log.firstChild);
 }
 
-async function fetchProgress() {
+async function apiCall(endpoint, method='GET', body=null) {
   try {
-    const resp = await fetch(PROGRESS_FILE + '?t=' + Date.now());
-    if (!resp.ok) throw new Error('not found');
-    const data = await resp.json();
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const resp = await fetch(API + endpoint, opts);
+    return await resp.json();
+  } catch (e) {
+    return { error: e.message };
+  }
+}
 
-    // Stats
+async function startScan() {
+  const roots = document.getElementById('roots').value.trim();
+  const body = {
+    roots: roots ? roots.split(/\s+/) : [],
+    partial_only: document.getElementById('partial-only').checked,
+    no_hash: document.getElementById('no-hash').checked,
+    sequential: document.getElementById('sequential').checked,
+    workers: parseInt(document.getElementById('workers').value) || 8,
+  };
+  const md = document.getElementById('max-depth').value;
+  if (md) body.max_depth = parseInt(md);
+
+  const result = await apiCall('/api/start', 'POST', body);
+  if (result.error) {
+    addLog('❌ Erreur: ' + result.error);
+    return;
+  }
+  isRunning = true;
+  startTime = Date.now();
+  lastFiles = 0;
+  lastTime = Date.now();
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').disabled = false;
+  document.getElementById('status-dot').className = 'status-dot running';
+  document.getElementById('status-text').textContent = 'Scan en cours...';
+  addLog('▶ Scan lancé: ' + (result.roots || []).join(', '));
+  // Reset phases
+  ['scan','hash','compare','export'].forEach(p => updatePhase(p, 'pending'));
+}
+
+async function stopScan() {
+  const result = await apiCall('/api/stop', 'POST');
+  if (result.stopped) {
+    isRunning = false;
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-stop').disabled = true;
+    document.getElementById('status-dot').className = 'status-dot idle';
+    document.getElementById('status-text').textContent = 'Arrêté';
+    addLog('⏹ Scan arrêté');
+  }
+}
+
+async function checkStatus() {
+  const status = await apiCall('/api/status');
+  if (status.running) {
+    if (!isRunning) {
+      isRunning = true;
+      document.getElementById('btn-start').disabled = true;
+      document.getElementById('btn-stop').disabled = false;
+      document.getElementById('status-dot').className = 'status-dot running';
+      document.getElementById('status-text').textContent = 'Scan en cours...';
+    }
+  } else {
+    if (isRunning) {
+      isRunning = false;
+      document.getElementById('btn-start').disabled = false;
+      document.getElementById('btn-stop').disabled = true;
+      document.getElementById('status-dot').className = 'status-dot idle';
+      document.getElementById('status-text').textContent = 'Terminé';
+      addLog('✅ Scan terminé');
+    }
+  }
+}
+
+async function fetchProgress() {
+  await checkStatus();
+  try {
+    const data = await apiCall('/api/progress');
+    if (data.phase === 'idle') return;
+
     document.getElementById('files').textContent = (data.total_files || 0).toLocaleString();
     document.getElementById('dirs').textContent = (data.total_dirs || 0).toLocaleString();
     document.getElementById('size').textContent = formatSize(data.total_size || 0);
     document.getElementById('errors').textContent = data.errors || 0;
 
-    // Temps
     const elapsed = (Date.now() - startTime) / 1000;
     document.getElementById('elapsed').textContent = formatTime(elapsed);
 
-    // ETA basé sur le débit
     if (data.total_files > lastFiles && elapsed > 2) {
       const rate = (data.total_files - lastFiles) / ((Date.now() - lastTime) / 1000);
-      if (rate > 0 && data.estimated_total > data.total_files) {
-        const remaining = (data.estimated_total - data.total_files) / rate;
-        document.getElementById('eta').textContent = formatTime(remaining);
+      if (rate > 0) {
+        document.getElementById('eta').textContent = 'Calcul...';
       }
       lastFiles = data.total_files;
       lastTime = Date.now();
     }
 
-    // Progression globale
     let pct = 0;
-    if (data.phase === 'scan') pct = Math.min(25, (data.total_files / (data.estimated_total || 100000)) * 25);
-    else if (data.phase === 'hash') pct = 25 + Math.min(25, (data.hashed || 0) / (data.total_files || 1) * 25);
+    if (data.phase === 'scan') pct = Math.min(25, (data.total_files / Math.max(data.total_files + 1000, 10000)) * 25);
+    else if (data.phase === 'hash') pct = 25 + Math.min(25, (data.hashed || 0) / Math.max(data.total_files, 1) * 25);
     else if (data.phase === 'compare') pct = 50 + 25;
     else if (data.phase === 'export') pct = 75 + 25;
     else if (data.phase === 'done') pct = 100;
@@ -224,7 +293,6 @@ async function fetchProgress() {
     fill.style.width = pct + '%';
     fill.textContent = Math.round(pct) + '%';
 
-    // Phases
     const phases = ['scan', 'hash', 'compare', 'export'];
     const phaseOrder = { scan: 0, hash: 1, compare: 2, export: 3, done: 4 };
     const current = phaseOrder[data.phase] || 0;
@@ -235,7 +303,6 @@ async function fetchProgress() {
     });
     if (data.phase === 'done') phases.forEach(p => updatePhase(p, 'done'));
 
-    // Disques
     if (data.by_drive) {
       const disksDiv = document.getElementById('disks');
       disksDiv.innerHTML = '';
@@ -247,14 +314,8 @@ async function fetchProgress() {
       }
     }
 
-    // Log
-    if (data.last_message) {
-      addLog(data.last_message);
-    }
-
-  } catch (e) {
-    // Pas encore de fichier progress.json
-  }
+    if (data.last_message) addLog(data.last_message);
+  } catch (e) {}
 }
 
 setInterval(fetchProgress, 2000);
