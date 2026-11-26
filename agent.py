@@ -5,7 +5,7 @@ import time
 import threading
 import json
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
 from config import ScanConfig, CompareConfig, ensure_dirs
 from scanner import scan_roots, ScanResult

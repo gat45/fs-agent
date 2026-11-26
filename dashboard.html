@@ -228,7 +228,12 @@ function addLog(msg) {
   const entry = document.createElement('div');
   entry.className = 'log-entry';
   const time = new Date().toLocaleTimeString();
-  entry.innerHTML = '<span class="log-time">[' + time + ']</span> ' + msg;
+  entry.textContent = '';
+  const span = document.createElement('span');
+  span.className = 'log-time';
+  span.textContent = '[' + time + ']';
+  entry.appendChild(span);
+  entry.appendChild(document.createTextNode(' ' + msg));
   log.appendChild(entry);
   log.scrollTop = log.scrollHeight;
   while (log.children.length > 50) log.removeChild(log.firstChild);
@@ -247,11 +252,11 @@ async function apiCall(endpoint, method='GET', body=null) {
 
 function updateSelectedDirs() {
   const container = document.getElementById('selected-dirs');
-  container.innerHTML = '';
+  container.textContent = '';
   selectedDirs.forEach((dir, i) => {
     const div = document.createElement('div');
     div.className = 'selected-dir';
-    div.innerHTML = dir + ' <span class="remove" onclick="removeDir(' + i + ')">x</span>';
+    div.textContent = dir + ' x';
     container.appendChild(div);
   });
   document.getElementById('roots').value = selectedDirs.join(' ');
@@ -294,18 +299,18 @@ async function openBrowsePath(path) {
 
   if (data.error) {
     pathDiv.textContent = 'Erreur: ' + data.error;
-    listDiv.innerHTML = '';
+    listDiv.textContent = '';
     return;
   }
 
   pathDiv.textContent = data.path || 'Disques disponibles';
-  listDiv.innerHTML = '';
+  listDiv.textContent = '';
 
   (data.items || []).forEach(item => {
     const div = document.createElement('div');
     div.className = 'browse-item';
     const icon = item.type === 'drive' ? '💾' : '📁';
-    div.innerHTML = icon + ' ' + item.name;
+    div.textContent = icon + ' ' + item.name;
     div.onclick = () => {
       if (item.type === 'dir' || item.type === 'drive') {
         browseHistory.push(currentBrowsePath);
@@ -321,7 +326,10 @@ async function openBrowsePath(path) {
   });
 
   if (data.items.length === 0) {
-    listDiv.innerHTML = '<div class="no-data">Aucun sous-dossier</div>';
+    const noData = document.createElement('div');
+    noData.className = 'no-data';
+    noData.textContent = 'Aucun sous-dossier';
+    listDiv.appendChild(noData);
   }
 }
 
@@ -461,11 +469,18 @@ async function fetchProgress() {
 
     if (data.by_drive) {
       const disksDiv = document.getElementById('disks');
-      disksDiv.innerHTML = '';
+      disksDiv.textContent = '';
       for (const [drv, info] of Object.entries(data.by_drive)) {
         const div = document.createElement('div');
         div.className = 'disk';
-        div.innerHTML = '<span class="disk-name">Disque ' + drv + ':</span><span class="disk-info">' + info.files.toLocaleString() + ' fichiers, ' + formatSize(info.size) + '</span>';
+        const spanName = document.createElement('span');
+        spanName.className = 'disk-name';
+        spanName.textContent = 'Disque ' + drv + ':';
+        const spanInfo = document.createElement('span');
+        spanInfo.className = 'disk-info';
+        spanInfo.textContent = info.files.toLocaleString() + ' fichiers, ' + formatSize(info.size);
+        div.appendChild(spanName);
+        div.appendChild(spanInfo);
         disksDiv.appendChild(div);
       }
     }

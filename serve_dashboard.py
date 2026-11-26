@@ -49,7 +49,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
     def _json_response(self, data):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", "http://localhost")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode("utf-8"))
 
@@ -178,7 +178,7 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", "http://localhost")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
@@ -186,9 +186,9 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
 def start_server(port=PORT):
     socketserver.ThreadingTCPServer.allow_reuse_address = True
-    with socketserver.ThreadingTCPServer(("", port), APIHandler) as httpd:
-        print(f"Serveur API disponible sur: http://localhost:{port}")
-        print(f"Dashboard: http://localhost:{port}/dashboard.html")
+    with socketserver.ThreadingTCPServer(("127.0.0.1", port), APIHandler) as httpd:
+        print(f"Serveur API disponible sur: http://127.0.0.1:{port}")
+        print(f"Dashboard: http://127.0.0.1:{port}/dashboard.html")
         httpd.serve_forever()
 
 

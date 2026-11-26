@@ -96,7 +96,18 @@ def interactive_mode(plan, agent):
     print("=" * 60)
 
 
-def progress(kind, n):
+def detect_all_drives():
+    drives = []
+    if os.name == "nt":
+        for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+            path = f"{letter}:\\"
+            if os.path.exists(path) and os.path.isdir(path):
+                drives.append(path)
+    else:
+        for p in ["/"]:
+            if os.path.exists(p) and os.path.isdir(p):
+                drives.append(p)
+    return drives
     print(f"\r[{kind}] {n} traites...", end="", flush=True)
     drives = []
     if os.name == "nt":
@@ -177,7 +188,7 @@ def main():
 
     # Limiter a 6 racines max
     if len(roots) > 6:
-        print(f"Attention: maximum 6 disques/dossiers par scan. Seuls les 6 premiers seront scannes.")
+        print("Attention: maximum 6 disques/dossiers par scan. Seuls les 6 premiers seront scannes.")
         roots = roots[:6]
 
     excludes = None

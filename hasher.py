@@ -10,9 +10,9 @@ import os
 import sys
 import sqlite3
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+import time
 from typing import Callable, List, Optional
 
 sys.path.insert(0, "E:/python_packages")
@@ -158,7 +158,6 @@ class HashCache:
 
     def put(self, path: str, size: int, mtime: float, partial_hash: Optional[str],
             full_hash: Optional[str], algo: str, ctime: float = 0):
-        import time
         try:
             with _DB_LOCK:
                 conn = self._conn()
@@ -254,7 +253,6 @@ def hash_entries(entries: List, cfg: ScanConfig,
             return
         hash_file(e, cfg, cache)
         if throttle > 0:
-            import time
             time.sleep(throttle)
         if progress_cb:
             progress_cb(1)

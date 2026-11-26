@@ -4,8 +4,7 @@ from __future__ import annotations
 import os
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from config import CompareConfig
 
@@ -343,7 +342,6 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             plan.scan_diff = {
                 "previous_scan_id": previous_scan_id,
                 "current_scan_id": current_scan_id if current_scan_id is not None else diff.get("new_total", 0),
-                "files_added": len(diff.get("added", [])),
                 "files_added": len(diff.get("added", [])),
                 "files_removed": len(diff.get("removed", [])),
                 "files_modified": len(diff.get("modified", [])),
