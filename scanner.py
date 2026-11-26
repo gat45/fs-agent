@@ -148,15 +148,10 @@ def scan_one_root(root: str, cfg: ScanConfig,
 
     try:
         for dirpath, dirnames, filenames in os.walk(access_root, followlinks=cfg.follow_symlinks):
-            if dir_cache is not None:
-                try:
-                    st = os.stat(_add_long_path_prefix(dirpath))
-                    cached = dir_cache.get(dirpath)
-                    if cached is not None and cached["mtime"] == st.st_mtime:
-                        dirnames[:] = []
-                        continue
-                except OSError:
-                    pass
+            # Ne pas sauter un dossier simplement parce que son mtime est
+            # inchangé : dir_cache ne stocke ni la liste des fichiers ni leurs
+            # métadonnées, donc ce raccourci rendrait le résultat incomplet.
+            # Le cache reste mis à jour ci-dessous pour un futur cache complet.
 
             dirpath = _strip_long_path_prefix(dirpath)
 

@@ -6,7 +6,9 @@ import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-CONFIG_PATH = Path("E:/agent_fs/config.json")
+from config import OUTPUT_ROOT
+
+CONFIG_PATH = OUTPUT_ROOT / "config.json"
 
 DEFAULT_CONFIG = {
     "roots": [],
@@ -29,7 +31,7 @@ DEFAULT_CONFIG = {
     "no_unique": False,
     "no_by_name": False,
     "no_by_size": False,
-    "dest": "E:\\",
+    "dest": None,
     "output": None,
     "dashboard": False,
 }

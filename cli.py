@@ -10,7 +10,7 @@ from pathlib import Path
 # S'assurer que le dossier du script est dans sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import ScanConfig, CompareConfig, ensure_dirs
+from config import ScanConfig, CompareConfig, ensure_dirs, REPORTS_DIR
 from agent import FilesystemAgent
 from reporter import _human
 
@@ -20,7 +20,7 @@ def parse_args():
         description="Agent de scan et comparaison de fichiers/dossiers multi-disques.")
     p.add_argument("roots", nargs="*", help="Racines a scanner (ex: C:\\ D:\\ E:\\). Si vide, utilise --all-drives.")
     p.add_argument("--all-drives", action="store_true", help="Scanner tous les disques disponibles automatiquement")
-    p.add_argument("--output", "-o", default=None, help="Dossier de sortie (defaut: E:/agent_fs/reports)")
+    p.add_argument("--output", "-o", default=None, help=f"Dossier de sortie (defaut: {REPORTS_DIR})")
     p.add_argument("--cache", default=None, help="Chemin du cache SQLite")
     p.add_argument("--min-size", type=int, default=0, help="Taille minimale (octets)")
     p.add_argument("--max-size", type=int, default=None, help="Taille maximale (octets)")
@@ -41,7 +41,7 @@ def parse_args():
     p.add_argument("--max-depth", type=int, default=None, help="Profondeur max de scan")
     p.add_argument("--analyze", default=None, help="Analyser un dossier specifique")
     p.add_argument("--llm-analyze", action="store_true", help="Analyser avec OpenCode (LLM)")
-    p.add_argument("--dest", default="E:\\", help="Disque de destination (defaut: E:\\)")
+    p.add_argument("--dest", default=None, help="Disque/dossier de destination (optionnel)")
     p.add_argument("--incremental", action="store_true", help="Scan incrementiel")
     p.add_argument("--dashboard", action="store_true", help="Lancer le dashboard HTML en temps reel")
     p.add_argument("--progress-file", default=None, help="Fichier progress.json")
@@ -94,7 +94,6 @@ def interactive_mode(plan, agent):
     print("\n" + "=" * 60)
     print("Mode interactif termine. Aucune action n'a ete executee.")
     print("=" * 60)
-    print(f"\r[{kind}] {n} traites...", end="", flush=True)
 
 
 def progress(kind, n):
@@ -154,13 +153,13 @@ def main():
     if args.dashboard or file_cfg.get("dashboard"):
         import subprocess
         subprocess.Popen([sys.executable, "serve_dashboard.py"], cwd=str(Path(__file__).resolve().parent))
-        print("Dashboard lance sur http://localhost:8765/dashboard.html")
+        print("Dashboard lance sur http://localhost:8766/dashboard.html")
 
     # Fichier de progression
     if args.progress_file:
         progress_file = args.progress_file
     elif args.dashboard:
-        progress_file = str(Path(args.output or "E:/agent_fs/reports") / "progress.json")
+        progress_file = str(Path(args.output or REPORTS_DIR) / "progress.json")
     else:
         progress_file = None
 
@@ -266,7 +265,7 @@ def main():
     # Mode LLM analysis
     if args.llm_analyze:
         from llm_analysis import generate_analysis_report
-        report_path = os.path.join(args.output or "E:/agent_fs/reports", "llm_analysis.md")
+        report_path = os.path.join(args.output or REPORTS_DIR, "llm_analysis.md")
         generate_analysis_report(plan.duplicate_groups, report_path, use_opencode=True)
         print(f"\nRapport LLM sauvegarde: {report_path}")
     # Mode interactif

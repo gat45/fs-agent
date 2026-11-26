@@ -15,6 +15,8 @@ import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+from config import CACHE_DIR
+
 _DB_LOCK = threading.Lock()
 
 
@@ -23,7 +25,7 @@ class ScanHistory:
 
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
-            db_path = Path("E:/agent_fs/cache/scan_history.sqlite")
+            db_path = CACHE_DIR / "scan_history.sqlite"
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init()
@@ -82,7 +84,7 @@ class ScanHistory:
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
                     time.time(),
-                    json.dumps(scan_result.roots),
+                    json.dumps(sorted(scan_result.roots)),
                     scan_result.total_files,
                     scan_result.total_size,
                     len(scan_result.dirs),

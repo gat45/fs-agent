@@ -5,9 +5,6 @@ Cache SQLite pour eviter de re-hasher des fichiers inchanges (cle: path+size+mti
 from __future__ import annotations
 
 import os
-import sys
-sys.path.insert(0, "E:/python_packages")
-
 import hashlib
 import sqlite3
 import threading

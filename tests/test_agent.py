@@ -3,9 +3,9 @@ import os
 import sys
 import tempfile
 import shutil
-import subprocess
+from pathlib import Path
 
-sys.path.insert(0, "E:/agent_fs")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import ScanConfig, CompareConfig
 from scanner import scan_roots
 from agent import FilesystemAgent
@@ -35,7 +35,7 @@ def setup_test_data(base):
 
 
 def test_scan_and_compare():
-    base = tempfile.mkdtemp(dir="E:/temp/opencode")
+    base = tempfile.mkdtemp()
     try:
         a, b = setup_test_data(base)
         scan_cfg = ScanConfig(roots=[a, b], compute_hash=True, workers=2,
@@ -54,7 +54,7 @@ def test_scan_and_compare():
 
 
 def test_no_hash_mode():
-    base = tempfile.mkdtemp(dir="E:/temp/opencode")
+    base = tempfile.mkdtemp()
     try:
         a, b = setup_test_data(base)
         scan_cfg = ScanConfig(roots=[a, b], compute_hash=False, workers=2,
@@ -72,7 +72,7 @@ def test_no_hash_mode():
 
 
 def test_excludes():
-    base = tempfile.mkdtemp(dir="E:/temp/opencode")
+    base = tempfile.mkdtemp()
     try:
         a, _ = setup_test_data(base)
         # Creer un fichier dans un dossier exclu
@@ -97,7 +97,7 @@ def test_excludes():
 
 
 def test_hardlinks():
-    base = tempfile.mkdtemp(dir="E:/temp/opencode")
+    base = tempfile.mkdtemp()
     try:
         a = os.path.join(base, "a")
         os.makedirs(a, exist_ok=True)
@@ -105,9 +105,12 @@ def test_hardlinks():
         p2 = os.path.join(a, "hard.txt")
         with open(p1, "w") as f:
             f.write("hello hardlink")
-        # Creer un hardlink (Windows: mklink /H)
-        subprocess.run(["cmd", "/c", "mklink", "/H", p2, p1],
-                       capture_output=True, check=False)
+        # Créer un hardlink sur toutes les plateformes supportées.
+        try:
+            os.link(p1, p2)
+        except (AttributeError, OSError):
+            print("SKIP: test_hardlinks (hardlinks indisponibles)")
+            return
         if not os.path.exists(p2):
             print("SKIP: test_hardlinks (mklink non disponible)")
             return

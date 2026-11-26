@@ -22,7 +22,6 @@ def _sanitize_csv(value):
         if s and s[0] in ("=", "+", "-", "@", "\t", "\r", "\n"):
             return "'" + value
     return value
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
 def write_json(plan: ComparePlan, out_dir: Path, name: str = "plan") -> Path:
@@ -185,8 +184,3 @@ def _md_escape(s):
     if not isinstance(s, str):
         s = str(s)
     return s.replace("\\", "\\\\").replace("`", "\\`").replace("|", "\\|")
-    for unit in ("B", "Ko", "Mo", "Go", "To"):
-        if abs(n) < 1024:
-            return f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n:.1f} Po"

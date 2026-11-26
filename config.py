@@ -6,23 +6,30 @@ Tous les chemins de sortie sont confines a E:\\ pour respecter la contrainte
 from __future__ import annotations
 
 import os
-import sys
-# Ajouter le chemin des packages installes dans E: (disque C: plein)
-sys.path.insert(0, "E:/python_packages")
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-# Racine obligatoire pour toutes les sorties (cache, rapports, logs).
-OUTPUT_ROOT = Path("E:/agent_fs")
+# Racine des sorties : chemin explicite via FS_AGENT_HOME, E: sous Windows,
+# emplacement cache portable sous Linux/macOS.
+if os.environ.get("FS_AGENT_HOME"):
+    OUTPUT_ROOT = Path(os.environ["FS_AGENT_HOME"]).expanduser()
+elif os.name == "nt":
+    OUTPUT_ROOT = Path("E:/agent_fs")
+else:
+    OUTPUT_ROOT = Path.home() / ".cache" / "fs-agent"
 CACHE_DIR = OUTPUT_ROOT / "cache"
 REPORTS_DIR = OUTPUT_ROOT / "reports"
 LOGS_DIR = OUTPUT_ROOT / "logs"
 
-# Temporaire: forcer TEMP/TMP vers E: pour eviter tout ecriture dans C:.
-os.environ.setdefault("TEMP", "E:/temp/opencode")
-os.environ.setdefault("TMP", "E:/temp/opencode")
+# Respecter l'environnement existant et éviter de supposer l'existence du disque E:.
+TEMP_ROOT = Path(os.environ.get("FS_AGENT_TEMP", (
+    "E:/temp/opencode" if os.name == "nt"
+    else str(Path.home() / ".cache" / "fs-agent" / "tmp")
+))).expanduser()
+os.environ.setdefault("TEMP", str(TEMP_ROOT))
+os.environ.setdefault("TMP", str(TEMP_ROOT))
 
 # Dossiers systeme a ignorer par defaut (Windows).
 DEFAULT_EXCLUDES = [
@@ -85,6 +92,12 @@ class ScanConfig:
     def __post_init__(self):
         if self.excludes is None:
             self.excludes = list(DEFAULT_EXCLUDES)
+        self.workers = max(1, int(self.workers))
+        self.io_threads = max(1, int(self.io_threads))
+        if self.min_size < 0 or (self.max_size is not None and self.max_size < 0):
+            raise ValueError("Les tailles min/max doivent être positives")
+        if self.max_size is not None and self.max_size < self.min_size:
+            raise ValueError("max_size doit être supérieur ou égal à min_size")
 
     def resolved_cache_db(self) -> Path:
         if self.cache_db:
