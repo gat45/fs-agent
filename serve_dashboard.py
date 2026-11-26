@@ -24,6 +24,8 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
             self._json_response(self._get_status())
         elif self.path.startswith("/api/progress"):
             self._json_response(self._get_progress())
+        elif self.path.startswith("/api/browse"):
+            self._json_response(self._browse(self.path))
         elif self.path == "/":
             self.path = "/dashboard.html"
             super().do_GET()
@@ -52,6 +54,15 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data).encode("utf-8"))
 
+    def _get_progress(self):
+        try:
+            if os.path.exists(PROGRESS_FILE):
+                with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return {"phase": "idle", "total_files": 0, "total_dirs": 0, "total_size": 0, "errors": 0, "by_drive": {}, "last_message": "En attente..."}
+
     def _get_status(self):
         global SCAN_PROCESS
         if SCAN_PROCESS is not None:
@@ -63,7 +74,38 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
                 return {"running": False, "exit_code": poll}
         return {"running": False}
 
-    def _get_progress(self):
+    def _browse(self, path):
+        """Liste les dossiers d'un chemin pour le selecteur."""
+        import urllib.parse
+        parsed = urllib.parse.urlparse(path)
+        params = urllib.parse.parse_qs(parsed.query)
+        browse_path = params.get("path", [""])[0]
+
+        if not browse_path:
+            # Racine: lister les disques
+            drives = []
+            for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+                p = f"{letter}:\\"
+                if os.path.exists(p) and os.path.isdir(p):
+                    drives.append({"name": f"{letter}:", "path": p, "type": "drive"})
+            return {"path": "", "items": drives}
+
+        if not os.path.exists(browse_path) or not os.path.isdir(browse_path):
+            return {"error": "Chemin invalide", "path": browse_path, "items": []}
+
+        items = []
+        try:
+            for entry in sorted(os.scandir(browse_path), key=lambda e: e.name.lower()):
+                if entry.is_dir(follow_symlinks=False):
+                    items.append({"name": entry.name, "path": entry.path, "type": "dir"})
+        except PermissionError:
+            return {"error": "Acces refuse", "path": browse_path, "items": []}
+        except Exception as e:
+            return {"error": str(e), "path": browse_path, "items": []}
+
+        # Limiter a 100 entrees
+        items = items[:100]
+        return {"path": browse_path, "items": items, "parent": os.path.dirname(browse_path) if browse_path not in ("", "\\") else None}
         try:
             if os.path.exists(PROGRESS_FILE):
                 with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
@@ -143,7 +185,8 @@ class APIHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def start_server(port=PORT):
-    with socketserver.TCPServer(("", port), APIHandler) as httpd:
+    socketserver.ThreadingTCPServer.allow_reuse_address = True
+    with socketserver.ThreadingTCPServer(("", port), APIHandler) as httpd:
         print(f"Serveur API disponible sur: http://localhost:{port}")
         print(f"Dashboard: http://localhost:{port}/dashboard.html")
         httpd.serve_forever()

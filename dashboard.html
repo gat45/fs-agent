@@ -26,7 +26,6 @@
   .disk:last-child { border-bottom: none; }
   .disk-name { font-weight: 600; color: #79c0ff; }
   .disk-info { color: #8b949e; font-size: 0.9em; }
-  .error { color: #f85149; font-size: 0.85em; }
   .log { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.85em; }
   .log-entry { margin: 2px 0; }
   .log-time { color: #8b949e; }
@@ -41,6 +40,8 @@
   .btn-stop:hover { background: #f85149; }
   .btn-stop:disabled { background: #30363d; cursor: not-allowed; }
   .btn-start:disabled { background: #30363d; cursor: not-allowed; }
+  .btn-browse { background: #1f6feb; color: white; }
+  .btn-browse:hover { background: #388bfd; }
   .options { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
   .option { display: flex; align-items: center; gap: 6px; font-size: 0.9em; color: #8b949e; }
   .option input { accent-color: #58a6ff; }
@@ -49,10 +50,35 @@
   .status-dot.running { background: #2ea043; box-shadow: 0 0 8px #2ea043; animation: pulse 1.5s infinite; }
   .status-dot.idle { background: #8b949e; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; }
+  .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; max-width: 600px; max-height: 80vh; margin: 5% auto; overflow-y: auto; }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .modal-header h2 { margin: 0; }
+  .close-btn { background: none; border: none; color: #8b949e; font-size: 1.5em; cursor: pointer; }
+  .close-btn:hover { color: #e0e0e0; }
+  .browse-item { padding: 8px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  .browse-item:hover { background: #21262d; }
+  .browse-item.selected { background: #1f6feb; }
+  .browse-path { color: #79c0ff; font-size: 0.9em; margin-bottom: 10px; word-break: break-all; }
+  .browse-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .selected-dirs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .selected-dir { background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 4px 8px; font-size: 0.85em; display: flex; align-items: center; gap: 6px; }
+  .selected-dir .remove { cursor: pointer; color: #f85149; }
+  .selected-dir .remove:hover { color: #ff7b72; }
+  .results { max-height: 400px; overflow-y: auto; }
+  .result-item { padding: 8px; border-bottom: 1px solid #21262d; font-size: 0.85em; }
+  .result-item:last-child { border-bottom: none; }
+  .result-key { color: #79c0ff; font-family: monospace; }
+  .result-path { color: #8b949e; font-size: 0.8em; word-break: break-all; }
+  .tab { display: inline-block; padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; color: #8b949e; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .max-warning { color: #f85149; font-size: 0.8em; margin-top: 4px; }
 </style>
 </head>
 <body>
-<h1>🔍 FS-Agent Dashboard</h1>
+<h1>FS-Agent Dashboard</h1>
 
 <div class="card">
   <h2>Contrôles</h2>
@@ -62,26 +88,29 @@
   </div>
   <div class="controls">
     <input type="text" id="roots" placeholder="Dossiers à scanner (ex: C:\ D:\ E:\) ou laisser vide pour tous les disques" />
-    <button class="btn-start" id="btn-start" onclick="startScan()">▶ Lancer</button>
-    <button class="btn-stop" id="btn-stop" onclick="stopScan()" disabled>⏹ Arrêter</button>
+    <button class="btn-browse" onclick="openBrowser()">Parcourir</button>
+    <button class="btn-start" id="btn-start" onclick="startScan()">Lancer</button>
+    <button class="btn-stop" id="btn-stop" onclick="stopScan()" disabled>Arreter</button>
   </div>
+  <div class="selected-dirs" id="selected-dirs"></div>
+  <div class="max-warning" id="max-warning" style="display:none">Maximum 6 dossiers/disques par scan</div>
   <div class="options">
     <label class="option"><input type="checkbox" id="partial-only" /> Partial hash (rapide)</label>
     <label class="option"><input type="checkbox" id="no-hash" /> Pas de hash</label>
-    <label class="option"><input type="checkbox" id="sequential" /> Séquentiel (HDD)</label>
+    <label class="option"><input type="checkbox" id="sequential" /> Sequentiel (HDD)</label>
     <label class="option">Workers: <input type="number" id="workers" value="8" min="1" max="32" style="width:50px" /></label>
-    <label class="option">Profondeur max: <input type="number" id="max-depth" value="" min="1" max="50" style="width:50px" placeholder="∞" /></label>
+    <label class="option">Profondeur max: <input type="number" id="max-depth" value="" min="1" max="50" style="width:50px" placeholder="inf" /></label>
   </div>
 </div>
 
 <div class="grid">
   <div class="card stat">
     <div class="stat-value" id="files">0</div>
-    <div class="stat-label">Fichiers scannés</div>
+    <div class="stat-label">Fichiers scannes</div>
   </div>
   <div class="card stat">
     <div class="stat-value" id="dirs">0</div>
-    <div class="stat-label">Dossiers scannés</div>
+    <div class="stat-label">Dossiers scannes</div>
   </div>
   <div class="card stat">
     <div class="stat-value" id="size">0 Go</div>
@@ -89,7 +118,7 @@
   </div>
   <div class="card stat">
     <div class="stat-value" id="errors">0</div>
-    <div class="stat-label">Erreurs d'accès</div>
+    <div class="stat-label">Erreurs d'acces</div>
   </div>
 </div>
 
@@ -122,18 +151,18 @@
 
 <div class="grid">
   <div class="card">
-    <h2>Disques scannés</h2>
-    <div id="disks"><div class="no-data">En attente de données...</div></div>
+    <h2>Disques scannes</h2>
+    <div id="disks"><div class="no-data">En attente de donnees...</div></div>
   </div>
   <div class="card">
     <h2>Temps</h2>
     <div class="stat">
       <div class="stat-value" id="elapsed">0s</div>
-      <div class="stat-label">Temps écoulé</div>
+      <div class="stat-label">Temps ecoule</div>
     </div>
     <div class="stat" style="margin-top: 12px;">
       <div class="stat-value" id="eta">--</div>
-      <div class="stat-label">Temps restant (estimé)</div>
+      <div class="stat-label">Temps restant (estime)</div>
     </div>
   </div>
 </div>
@@ -143,7 +172,24 @@
   <div class="log" id="log"></div>
 </div>
 
-<div class="refresh">Mise à jour automatique toutes les 2 secondes | FS-Agent v1.0</div>
+<div class="refresh">Mise a jour automatique toutes les 2 secondes | FS-Agent v1.0 | Max 6 dossiers/scan</div>
+
+<!-- Modal de navigation -->
+<div class="modal" id="browse-modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Choisir un dossier</h2>
+      <button class="close-btn" onclick="closeBrowser()">&times;</button>
+    </div>
+    <div class="browse-path" id="browse-path">Chargement...</div>
+    <div id="browse-list"></div>
+    <div class="browse-actions">
+      <button class="btn-start" onclick="selectCurrentDir()">Selectionner ce dossier</button>
+      <button class="btn-browse" onclick="goUp()">.. Parent</button>
+      <button class="btn-stop" onclick="closeBrowser()">Fermer</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const API = '';
@@ -151,6 +197,9 @@ let startTime = Date.now();
 let lastFiles = 0;
 let lastTime = Date.now();
 let isRunning = false;
+let selectedDirs = [];
+let currentBrowsePath = '';
+let browseHistory = [];
 
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
@@ -170,7 +219,7 @@ function updatePhase(phase, status) {
   const st = document.getElementById('phase-' + phase + '-status');
   if (!dot || !st) return;
   if (status === 'active') { dot.className = 'phase-dot active'; st.textContent = 'En cours...'; }
-  else if (status === 'done') { dot.className = 'phase-dot done'; st.textContent = 'Terminé ✓'; }
+  else if (status === 'done') { dot.className = 'phase-dot done'; st.textContent = 'Termine'; }
   else { dot.className = 'phase-dot'; st.textContent = 'En attente'; }
 }
 
@@ -179,7 +228,7 @@ function addLog(msg) {
   const entry = document.createElement('div');
   entry.className = 'log-entry';
   const time = new Date().toLocaleTimeString();
-  entry.innerHTML = `<span class="log-time">[${time}]</span> ${msg}`;
+  entry.innerHTML = '<span class="log-time">[' + time + ']</span> ' + msg;
   log.appendChild(entry);
   log.scrollTop = log.scrollHeight;
   while (log.children.length > 50) log.removeChild(log.firstChild);
@@ -196,10 +245,122 @@ async function apiCall(endpoint, method='GET', body=null) {
   }
 }
 
+function updateSelectedDirs() {
+  const container = document.getElementById('selected-dirs');
+  container.innerHTML = '';
+  selectedDirs.forEach((dir, i) => {
+    const div = document.createElement('div');
+    div.className = 'selected-dir';
+    div.innerHTML = dir + ' <span class="remove" onclick="removeDir(' + i + ')">x</span>';
+    container.appendChild(div);
+  });
+  document.getElementById('roots').value = selectedDirs.join(' ');
+  const warning = document.getElementById('max-warning');
+  warning.style.display = selectedDirs.length >= 6 ? 'block' : 'none';
+}
+
+function removeDir(i) {
+  selectedDirs.splice(i, 1);
+  updateSelectedDirs();
+}
+
+function addDir(path) {
+  if (selectedDirs.length >= 6) {
+    addLog('Maximum 6 dossiers/disques par scan');
+    return;
+  }
+  if (!selectedDirs.includes(path)) {
+    selectedDirs.push(path);
+    updateSelectedDirs();
+    addLog('Ajoute: ' + path);
+  }
+}
+
+function openBrowser() {
+  browseHistory = [];
+  openBrowsePath('');
+  document.getElementById('browse-modal').style.display = 'block';
+}
+
+function closeBrowser() {
+  document.getElementById('browse-modal').style.display = 'none';
+}
+
+async function openBrowsePath(path) {
+  currentBrowsePath = path;
+  const data = await apiCall('/api/browse?path=' + encodeURIComponent(path));
+  const pathDiv = document.getElementById('browse-path');
+  const listDiv = document.getElementById('browse-list');
+
+  if (data.error) {
+    pathDiv.textContent = 'Erreur: ' + data.error;
+    listDiv.innerHTML = '';
+    return;
+  }
+
+  pathDiv.textContent = data.path || 'Disques disponibles';
+  listDiv.innerHTML = '';
+
+  (data.items || []).forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'browse-item';
+    const icon = item.type === 'drive' ? '💾' : '📁';
+    div.innerHTML = icon + ' ' + item.name;
+    div.onclick = () => {
+      if (item.type === 'dir' || item.type === 'drive') {
+        browseHistory.push(currentBrowsePath);
+        openBrowsePath(item.path);
+      }
+    };
+    // Double-clic pour selectionner
+    div.ondblclick = () => {
+      addDir(item.path);
+      closeBrowser();
+    };
+    listDiv.appendChild(div);
+  });
+
+  if (data.items.length === 0) {
+    listDiv.innerHTML = '<div class="no-data">Aucun sous-dossier</div>';
+  }
+}
+
+function goUp() {
+  if (currentBrowsePath && currentBrowsePath !== '') {
+    const parent = currentBrowsePath.substring(0, currentBrowsePath.lastIndexOf('\\'));
+    if (parent && parent !== currentBrowsePath) {
+      openBrowsePath(parent.endsWith(':') ? parent + '\\' : parent);
+    } else {
+      openBrowsePath('');
+    }
+  }
+}
+
+function selectCurrentDir() {
+  if (currentBrowsePath) {
+    addDir(currentBrowsePath);
+  }
+  closeBrowser();
+}
+
 async function startScan() {
   const roots = document.getElementById('roots').value.trim();
+  const rootList = roots ? roots.split(/\s+/) : [];
+  if (rootList.length === 0) {
+    // Utiliser les disques selectionnes
+    if (selectedDirs.length === 0) {
+      addLog('Veuillez choisir au moins un dossier ou disque');
+      return;
+    }
+  }
+  const finalRoots = rootList.length > 0 ? rootList : selectedDirs;
+  if (finalRoots.length > 6) {
+    addLog('Maximum 6 dossiers/disques par scan');
+    return;
+  }
+
   const body = {
-    roots: roots ? roots.split(/\s+/) : [],
+    roots: finalRoots,
     partial_only: document.getElementById('partial-only').checked,
     no_hash: document.getElementById('no-hash').checked,
     sequential: document.getElementById('sequential').checked,
@@ -210,7 +371,7 @@ async function startScan() {
 
   const result = await apiCall('/api/start', 'POST', body);
   if (result.error) {
-    addLog('❌ Erreur: ' + result.error);
+    addLog('Erreur: ' + result.error);
     return;
   }
   isRunning = true;
@@ -221,8 +382,7 @@ async function startScan() {
   document.getElementById('btn-stop').disabled = false;
   document.getElementById('status-dot').className = 'status-dot running';
   document.getElementById('status-text').textContent = 'Scan en cours...';
-  addLog('▶ Scan lancé: ' + (result.roots || []).join(', '));
-  // Reset phases
+  addLog('Scan lance: ' + (result.roots || []).join(', '));
   ['scan','hash','compare','export'].forEach(p => updatePhase(p, 'pending'));
 }
 
@@ -233,8 +393,8 @@ async function stopScan() {
     document.getElementById('btn-start').disabled = false;
     document.getElementById('btn-stop').disabled = true;
     document.getElementById('status-dot').className = 'status-dot idle';
-    document.getElementById('status-text').textContent = 'Arrêté';
-    addLog('⏹ Scan arrêté');
+    document.getElementById('status-text').textContent = 'Arrete';
+    addLog('Scan arrete');
   }
 }
 
@@ -254,8 +414,8 @@ async function checkStatus() {
       document.getElementById('btn-start').disabled = false;
       document.getElementById('btn-stop').disabled = true;
       document.getElementById('status-dot').className = 'status-dot idle';
-      document.getElementById('status-text').textContent = 'Terminé';
-      addLog('✅ Scan terminé');
+      document.getElementById('status-text').textContent = 'Termine';
+      addLog('Scan termine');
     }
   }
 }
@@ -275,10 +435,6 @@ async function fetchProgress() {
     document.getElementById('elapsed').textContent = formatTime(elapsed);
 
     if (data.total_files > lastFiles && elapsed > 2) {
-      const rate = (data.total_files - lastFiles) / ((Date.now() - lastTime) / 1000);
-      if (rate > 0) {
-        document.getElementById('eta').textContent = 'Calcul...';
-      }
       lastFiles = data.total_files;
       lastTime = Date.now();
     }
@@ -309,7 +465,7 @@ async function fetchProgress() {
       for (const [drv, info] of Object.entries(data.by_drive)) {
         const div = document.createElement('div');
         div.className = 'disk';
-        div.innerHTML = `<span class="disk-name">Disque ${drv}:</span><span class="disk-info">${info.files.toLocaleString()} fichiers, ${formatSize(info.size)}</span>`;
+        div.innerHTML = '<span class="disk-name">Disque ' + drv + ':</span><span class="disk-info">' + info.files.toLocaleString() + ' fichiers, ' + formatSize(info.size) + '</span>';
         disksDiv.appendChild(div);
       }
     }
