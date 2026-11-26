@@ -74,6 +74,7 @@ class ComparePlan:
     broken_symlinks: List[str] = field(default_factory=list)
     duplicate_folders: List[dict] = field(default_factory=list)
     scan_diff: dict = field(default_factory=dict)  # comparaison temporelle
+    md_comparisons: List[dict] = field(default_factory=list)  # comparaison de rapports MD
     # Statistiques par disque/racine
     per_root_stats: List[dict] = field(default_factory=list)
     # Actions suggerees
@@ -284,6 +285,18 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
                 "total_size": sum(s for _, s, _ in sig),
             })
     plan.duplicate_folders.sort(key=lambda x: -x["total_size"])
+
+    # --- Comparaison de rapports Markdown ---
+    try:
+        from md_compare import find_similar_md, compare_md_files
+        md_files = [f.path for f in files if f.path.lower().endswith(".md")]
+        if len(md_files) >= 2:
+            similar_pairs = find_similar_md(md_files, threshold=0.3)
+            for p1, p2, sim in similar_pairs[:20]:
+                cmp = compare_md_files(p1, p2)
+                plan.md_comparisons.append(cmp)
+    except Exception:
+        pass
 
     # --- Top plus gros fichiers ---
     top_largest = sorted(files, key=lambda f: -f.size)[:20]
