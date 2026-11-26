@@ -73,6 +73,7 @@ class ScanConfig:
     max_depth: Optional[int] = None
     follow_symlinks: bool = False
     skip_symlinks: bool = False
+    include_dirs: Optional[List[str]] = None  # filtrer par nom de dossier (ex: ["oneplus"])
     incremental: bool = False
     compute_hash: bool = True
     partial_hash_first: bool = True

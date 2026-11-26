@@ -41,7 +41,7 @@ def parse_args():
     p.add_argument("--max-depth", type=int, default=None, help="Profondeur max de scan")
     p.add_argument("--analyze", default=None, help="Analyser un dossier specifique")
     p.add_argument("--llm-analyze", action="store_true", help="Analyser avec OpenCode (LLM)")
-    p.add_argument("--dest", default=None, help="Disque/dossier de destination (optionnel)")
+    p.add_argument("--include-dir", nargs="*", default=None, help="Filtrer par nom de dossier (ex: oneplus)")
     p.add_argument("--incremental", action="store_true", help="Scan incrementiel")
     p.add_argument("--dashboard", action="store_true", help="Lancer le dashboard HTML en temps reel")
     p.add_argument("--progress-file", default=None, help="Fichier progress.json")
@@ -230,6 +230,7 @@ def main():
         max_size=args.max_size,
         extensions=args.ext,
         max_depth=args.max_depth,
+        include_dirs=args.include_dir,
         follow_symlinks=args.follow_symlinks,
         skip_symlinks=args.skip_symlinks,
         incremental=args.incremental,

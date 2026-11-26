@@ -223,6 +223,12 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 if cfg.extensions and ext not in [e.lower() for e in cfg.extensions]:
                     continue
 
+                # Filtre par nom de dossier (include_dirs)
+                if cfg.include_dirs:
+                    path_parts = full.replace("\\", "/").split("/")
+                    if not any(d.lower() in [p.lower() for p in path_parts] for d in cfg.include_dirs):
+                        continue
+
                 fe = FileEntry(
                     path=full,
                     root=root_str,
