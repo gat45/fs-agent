@@ -141,6 +141,9 @@ def scan_one_root(root: str, cfg: ScanConfig,
             from incremental import DirCache
             cache_db = cfg.resolved_cache_db().parent / "dir_cache.sqlite"
             dir_cache = DirCache(cache_db)
+            # Avertissement: le scan incrementiel est experimental
+            import warnings
+            warnings.warn("Le scan incrementiel est experimental. Les resultats peuvent etre incomplets.")
         except Exception:
             pass
 
