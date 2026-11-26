@@ -38,7 +38,9 @@ def parse_args():
     p.add_argument("--no-unique", action="store_true", help="Ne pas lister les fichiers uniques")
     p.add_argument("--no-by-name", action="store_true", help="Ne pas comparer par nom de fichier")
     p.add_argument("--no-by-size", action="store_true", help="Ne pas grouper par taille")
-    p.add_argument("--max-depth", type=int, default=None, help="Profondeur max de scan")
+    p.add_argument("--analyze", default=None, help="Analyser un dossier specifique")
+    p.add_argument("--dest", default="E:\\", help="Disque de destination (defaut: E:\\)")
+    p.add_argument("--llm-analyze", action="store_true", help="Analyser avec OpenCode (LLM)")
     p.add_argument("--incremental", action="store_true", help="Scan incrementiel")
     p.add_argument("--dashboard", action="store_true", help="Lancer le dashboard HTML en temps reel")
     p.add_argument("--progress-file", default=None, help="Fichier progress.json")
@@ -175,9 +177,10 @@ def main():
     else:
         roots = args.roots
 
-    if not roots:
-        print("Aucun disque/racine a scanner.")
-        return
+    # Limiter a 6 racines max
+    if len(roots) > 6:
+        print(f"Attention: maximum 6 disques/dossiers par scan. Seuls les 6 premiers seront scannes.")
+        roots = roots[:6]
 
     excludes = None
     if args.exclude:
@@ -261,9 +264,18 @@ def main():
     print(f"Liens casses: {plan.summary.get('num_broken_symlinks', 0)}")
     print(f"Dossiers dupliques: {plan.summary.get('num_duplicate_folders', 0)}")
     print(f"Espace recuperable: {plan.summary['recoverable_human']}")
+    # Mode LLM analysis
+    if args.llm_analyze:
+        from llm_analysis import generate_analysis_report
+        report_path = os.path.join(args.output or "E:/agent_fs/reports", "llm_analysis.md")
+        generate_analysis_report(plan.duplicate_groups, report_path, use_opencode=True)
+        print(f"\nRapport LLM sauvegarde: {report_path}")
     # Mode interactif
     if args.interactive:
         interactive_mode(plan, agent)
+    print("\nExports:")
+    for k, v in agent.exports.items():
+        print(f"  {k}: {v}")
 
 
 if __name__ == "__main__":

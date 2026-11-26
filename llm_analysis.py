@@ -1,27 +1,20 @@
-"""Analyse IA des differences de contenu entre fichiers.
+"""Analyse IA des differences de contenu entre fichiers via OpenCode.
 
-Genere des prompts pour l'IA (LLM) pour analyser les differences
+Utilise la CLI OpenCode (opencode run) pour analyser les differences
 et proposer des fusions intelligentes. Ne fait aucune action sans confirmation.
 """
 from __future__ import annotations
 
 import os
 import json
+import subprocess
+import shutil
 from pathlib import Path
 from typing import List, Dict, Optional
 
-# Essayer d'importer les SDK LLM (optionnels)
-try:
-    import openai
-    HAS_OPENAI = True
-except ImportError:
-    HAS_OPENAI = False
-
-try:
-    import anthropic
-    HAS_ANTHROPIC = True
-except ImportError:
-    HAS_ANTHROPIC = False
+# Verifier si OpenCode est disponible
+OPENCODE_PATH = shutil.which("opencode")
+HAS_OPENCODE = OPENCODE_PATH is not None
 
 
 def generate_analysis_prompt(file1: str, file2: str, diff_summary: str) -> str:
@@ -65,37 +58,38 @@ def _read_file(path: str, max_bytes: int = 5000) -> str:
         return "[Impossible de lire le fichier]"
 
 
-def analyze_with_llm(prompt: str, provider: str = "openai", model: str = "gpt-4") -> Optional[str]:
-    """Analyse avec un LLM (si disponible)."""
-    if provider == "openai" and HAS_OPENAI:
-        try:
-            client = openai.OpenAI()
-            response = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=1000,
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"Erreur OpenAI: {e}"
-    elif provider == "anthropic" and HAS_ANTHROPIC:
-        try:
-            client = anthropic.Anthropic()
-            response = client.messages.create(
-                model=model,
-                max_tokens=1000,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return response.content[0].text
-        except Exception as e:
-            return f"Erreur Anthropic: {e}"
-    return None
+def analyze_with_opencode(prompt: str, model: str = None) -> Optional[str]:
+    """Analyse avec OpenCode CLI."""
+    if not HAS_OPENCODE:
+        return "OpenCode non installe. Installez-le depuis https://opencode.ai"
+
+    cmd = ["opencode", "run", prompt]
+    if model:
+        cmd.extend(["--model", model])
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        else:
+            return f"Erreur OpenCode (code {result.returncode}): {result.stderr.strip()}"
+    except subprocess.TimeoutExpired:
+        return "Timeout: l'analyse a pris plus de 120 secondes."
+    except Exception as e:
+        return f"Erreur: {e}"
 
 
-def generate_analysis_report(duplicate_groups: list, output_path: str, provider: str = None) -> str:
-    """Genere un rapport d'analyse IA pour tous les groupes de doublons."""
+def generate_analysis_report(duplicate_groups: list, output_path: str, use_opencode: bool = False) -> str:
+    """Genere un rapport d'analyse pour tous les groupes de doublons."""
     lines = []
-    lines.append("# Rapport d'analyse IA - Consolidation de doublons")
+    lines.append("# Rapport d'analyse - Consolidation de doublons")
     lines.append("")
     lines.append("Ce rapport contient les prompts et analyses pour chaque groupe de doublons.")
     lines.append("Aucune action n'est executee automatiquement.")
@@ -113,7 +107,6 @@ def generate_analysis_report(duplicate_groups: list, output_path: str, provider:
         lines.append(f"Meilleur: {mc.get('path', 'N/A')}")
         lines.append("")
 
-        # Generer le prompt pour le premier doublon
         if len(files) >= 2:
             prompt = generate_analysis_prompt(files[0]["path"], files[1]["path"], g.get("diff_summary", ""))
             lines.append("### Prompt pour l'IA")
@@ -122,11 +115,10 @@ def generate_analysis_report(duplicate_groups: list, output_path: str, provider:
             lines.append("```")
             lines.append("")
 
-            # Si un provider LLM est disponible, analyser
-            if provider:
-                analysis = analyze_with_llm(prompt, provider)
+            if use_opencode and HAS_OPENCODE:
+                analysis = analyze_with_opencode(prompt)
                 if analysis:
-                    lines.append("### Analyse IA")
+                    lines.append("### Analyse OpenCode")
                     lines.append(analysis)
                     lines.append("")
 
