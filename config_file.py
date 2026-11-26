@@ -47,6 +47,11 @@ def load_config(path: Optional[Path] = None) -> Dict[str, Any]:
         # Fusionner avec les defaults
         merged = dict(DEFAULT_CONFIG)
         merged.update(cfg)
+        # Valider les types
+        for key, default_val in DEFAULT_CONFIG.items():
+            if key in merged and merged[key] is not None:
+                if type(merged[key]) is not type(default_val) and default_val is not None:
+                    merged[key] = default_val
         return merged
     except (json.JSONDecodeError, OSError):
         return dict(DEFAULT_CONFIG)

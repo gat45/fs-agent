@@ -63,15 +63,15 @@ def compute_completeness(f) -> FileCompleteness:
         path=f.path,
         size=f.size,
         mtime=f.mtime,
-        mtime_human=datetime.fromtimestamp(f.mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        mtime_human=__import__("datetime").datetime.fromtimestamp(f.mtime).strftime("%Y-%m-%d %H:%M:%S") if f.mtime > 0 else "N/A",
     )
     # Score de base: taille + recence
-    fc.completeness_score = f.size * 0.3 + f.mtime * 0.001
+    fc.completeness_score = f.size * 0.3 + (f.mtime * 0.001 if f.mtime > 0 else 0)
     fc.reasons.append(f"taille={f.size} octets")
     fc.reasons.append(f"date={fc.mtime_human}")
 
     # Pour les fichiers texte, compter les lignes
-    ext = os.path.splitext(f.path)[1].lower()
+    ext = getattr(f, "ext", "") or os.path.splitext(f.path)[1].lower()
     text_exts = {".txt", ".md", ".py", ".js", ".ts", ".json", ".csv", ".xml",
                  ".yaml", ".yml", ".html", ".css", ".log", ".ini", ".cfg", ".java",
                  ".c", ".cpp", ".h", ".cs", ".go", ".rs", ".sh", ".bat"}

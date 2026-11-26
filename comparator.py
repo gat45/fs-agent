@@ -5,7 +5,7 @@ Produit un "plan structure" decrivant:
 - groupes de doublons (meme contenu)
 - fichiers uniques par disque/racine
 - dossiers miroirs (meme structure relative)
-- actions suggerees (supprimer doublons, synchroniser, etc.)
+- actions suggerees
 """
 from __future__ import annotations
 
@@ -22,19 +22,19 @@ from config import CompareConfig
 class SizeGroup:
     size: int
     count: int
-    files: List[str]  # chemins
+    files: List[str]
     drives: List[str]
 
 
 @dataclass
 class DuplicateGroup:
-    key: str            # hash (ou "size:..." si pas de hash)
+    key: str
     size: int
     count: int
     hash: Optional[str]
-    files: List[dict]   # {path, root, drive}
+    files: List[dict]
     drives: List[str]
-    wasted_bytes: int   # (count-1)*size
+    wasted_bytes: int
 
 
 @dataclass
@@ -43,7 +43,7 @@ class UniqueFile:
     root: str
     drive: str
     size: int
-    reason: str  # "unique_size" | "unique_content"
+    reason: str
 
 
 @dataclass
@@ -59,13 +59,9 @@ class ComparePlan:
     roots: List[str]
     total_files: int
     total_size: int
-    # Groupes par taille (tous, meme les uniques) - utile pour l'analyse
     size_groups: List[dict] = field(default_factory=list)
-    # Groupes de doublons (meme contenu)
     duplicate_groups: List[dict] = field(default_factory=list)
-    # Fichiers uniques (pas de doublon de contenu)
     unique_files: List[dict] = field(default_factory=list)
-    # Dossiers miroirs
     mirror_dirs: List[dict] = field(default_factory=list)
     top_largest: List[dict] = field(default_factory=list)
     by_extension: List[dict] = field(default_factory=list)
@@ -73,13 +69,10 @@ class ComparePlan:
     empty_dirs: List[str] = field(default_factory=list)
     broken_symlinks: List[str] = field(default_factory=list)
     duplicate_folders: List[dict] = field(default_factory=list)
-    scan_diff: dict = field(default_factory=dict)  # comparaison temporelle
-    md_comparisons: List[dict] = field(default_factory=list)  # comparaison de rapports MD
-    # Statistiques par disque/racine
+    scan_diff: dict = field(default_factory=dict)
+    md_comparisons: List[dict] = field(default_factory=list)
     per_root_stats: List[dict] = field(default_factory=list)
-    # Actions suggerees
     suggested_actions: List[dict] = field(default_factory=list)
-    # Resume
     summary: dict = field(default_factory=dict)
 
     def to_dict(self):
@@ -94,14 +87,21 @@ def _group_by_size(files) -> Dict[int, List]:
 
 
 def _group_by_content(files) -> Dict[str, List]:
-    """Groupe par full_hash (ou partial_hash si full absent), puis par taille."""
     g = defaultdict(list)
     for f in files:
         key = f.full_hash or f.partial_hash
         if key is None:
-            key = f"__nohash__:{f.path}"  # pas de hash: chaque fichier est unique
+            key = f"__nohash__:{f.path}"
         g[key].append(f)
     return g
+
+
+def _human(n: int) -> str:
+    for unit in ("B", "Ko", "Mo", "Go", "To"):
+        if abs(n) < 1024:
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} Po"
 
 
 def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_scan_id=None) -> ComparePlan:
@@ -114,7 +114,7 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
         plan.empty_dirs = list(getattr(scan_result, "empty_dirs", []) or [])
         plan.broken_symlinks = list(getattr(scan_result, "broken_symlinks", []) or [])
 
-    # --- Stats par racine ---
+    # Stats par racine
     per_root = defaultdict(lambda: {"root": "", "files": 0, "size": 0, "drives": set()})
     for f in files:
         r = per_root[f.root]
@@ -126,7 +126,7 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
         r["drives"] = sorted(r["drives"])
         plan.per_root_stats.append(r)
 
-    # --- Groupes par taille ---
+    # Groupes par taille
     if cfg.by_size:
         size_groups_raw = _group_by_size(files)
         for size, grp in sorted(size_groups_raw.items(), key=lambda kv: (-kv[0],)):
@@ -140,41 +140,34 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
                 "files": [f.path for f in grp],
             })
 
-    # --- Doublons de contenu ---
+    # Doublons de contenu
+    cross_dups = []
+    same_dups = []
     if cfg.by_content:
-        # Etape 1: candidats = fichiers dont la taille est partagee par >=2 (si by_size)
-        # On groupe par taille puis par hash pour eviter de hasher inutilement.
-        # Ici les hashes sont deja calcules; on groupe directement par hash.
         content_groups = _group_by_content(files)
         for key, grp in content_groups.items():
             if len(grp) < cfg.min_duplicate_group:
                 continue
-            # Verification: meme taille obligatoire pour etre doublon reel
             sizes = {f.size for f in grp}
             if len(sizes) != 1:
                 continue
             size = grp[0].size
             drives = sorted({f.drive for f in grp})
             roots = sorted({f.root for f in grp})
-            # Cross-drive filter
-            if cfg.cross_drive and len(drives) < 2 and len(roots) < 2:
-                # doublon dans le meme disque/racine: on garde quand meme mais marque
-                pass
-            # Detection hardlinks: meme inode sur le meme disque
-            inodes = {(f.drive, f.inode) for f in grp if hasattr(f, "inode") and f.inode is not None}
+            is_cross = len(drives) >= 2 or len(roots) >= 2
+            inodes = {(f.drive, getattr(f, "inode", None)) for f in grp if getattr(f, "inode", None) is not None}
             is_hardlink_group = len(inodes) == 1 and len(grp) > 1 and all(
                 getattr(f, "nlink", 1) > 1 for f in grp
             )
-            # Identifier le fichier le plus "complet" (plus recent ou plus gros)
             most_complete = max(grp, key=lambda f: (f.mtime, f.size))
-            plan.duplicate_groups.append({
+            dup = {
                 "key": key,
                 "size": size,
                 "count": len(grp),
                 "hash": grp[0].full_hash or grp[0].partial_hash,
                 "drives": drives,
                 "roots": roots,
-                "cross_drive": len(drives) >= 2 or len(roots) >= 2,
+                "cross_drive": is_cross,
                 "wasted_bytes": 0 if is_hardlink_group else (len(grp) - 1) * size,
                 "is_hardlink_group": is_hardlink_group,
                 "most_complete": {
@@ -188,13 +181,16 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
                            "mtime": f.mtime, "nlink": getattr(f, "nlink", 1),
                            "inode": getattr(f, "inode", None),
                            "is_most_complete": f.path == most_complete.path} for f in grp],
-            })
-        # Trier par wasted_bytes desc
+            }
+            plan.duplicate_groups.append(dup)
+            if is_cross:
+                cross_dups.append(dup)
+            else:
+                same_dups.append(dup)
         plan.duplicate_groups.sort(key=lambda g: -g["wasted_bytes"])
 
-    # --- Fichiers uniques ---
+    # Fichiers uniques
     if cfg.include_unique:
-        # Un fichier est "unique" si son groupe de contenu a taille 1
         content_groups = _group_by_content(files)
         for key, grp in content_groups.items():
             if len(grp) == 1:
@@ -207,13 +203,8 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
                     "reason": "unique_content",
                 })
 
-    # --- Dossiers miroirs ---
-    # Deux dossiers sont miroirs s'ils ont le meme ensemble de noms de fichiers
-    # relatifs. On compare par (racine_relative, ensemble de basenames).
-    # Approche: pour chaque paire de racines, detecter les sous-dossiers avec
-    # meme structure relative.
+    # Dossiers miroirs
     roots_list = sorted({f.root for f in files})
-    # Index: root -> {relative_dir -> set of basenames}
     root_dir_files: Dict[str, Dict[str, set]] = defaultdict(lambda: defaultdict(set))
     for f in files:
         rel = os.path.relpath(f.path, f.root)
@@ -222,8 +213,6 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             rdir = ""
         root_dir_files[f.root][rdir].add(os.path.basename(f.path))
 
-    # Pour chaque paire de racines, trouver les dirs relatifs communs avec
-    # meme ensemble de fichiers (ou intersection non vide).
     mirror_candidates = []
     for i in range(len(roots_list)):
         for j in range(i + 1, len(roots_list)):
@@ -237,7 +226,6 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
                 inter = s1 & s2
                 if len(inter) >= 1:
                     mirror_candidates.append((d, r1, r2, len(inter), len(s1), len(s2)))
-    # Agreger par relative path
     mirror_map: Dict[str, dict] = {}
     for d, r1, r2, inter, n1, n2 in mirror_candidates:
         key = d if d else "."
@@ -253,7 +241,6 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
         mirror_map[key]["common_files"] = max(mirror_map[key]["common_files"], inter)
     for key, m in mirror_map.items():
         m["roots"] = sorted(m["roots"])
-        # total_size: somme des tailles des fichiers dans ce dir (racine 1)
         ts = 0
         fc = 0
         for f in files:
@@ -265,8 +252,9 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
         m["file_count"] = fc
         m["total_size"] = ts
         plan.mirror_dirs.append(m)
+    plan.mirror_dirs.sort(key=lambda m: -m.get("common_files", 0))
 
-    # --- Dossiers dupliques (contenu identique) ---
+    # Dossiers dupliques (contenu identique)
     folder_sigs = defaultdict(list)
     for d in set(os.path.dirname(f.path) for f in files):
         sig_files = []
@@ -286,7 +274,7 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             })
     plan.duplicate_folders.sort(key=lambda x: -x["total_size"])
 
-    # --- Comparaison de rapports Markdown ---
+    # Comparaison de rapports Markdown
     try:
         from md_compare import find_similar_md, compare_md_files
         md_files = [f.path for f in files if f.path.lower().endswith(".md")]
@@ -298,13 +286,13 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
     except Exception:
         pass
 
-    # --- Top plus gros fichiers ---
+    # Top plus gros fichiers
     top_largest = sorted(files, key=lambda f: -f.size)[:20]
     plan.top_largest = [
         {"path": f.path, "root": f.root, "drive": f.drive, "size": f.size} for f in top_largest
     ]
 
-    # --- Stats par extension ---
+    # Stats par extension
     ext_stats = defaultdict(lambda: {"ext": "", "count": 0, "size": 0})
     for f in files:
         e = f.ext or "(sans extension)"
@@ -314,7 +302,7 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
         es["size"] += f.size
     plan.by_extension = sorted(ext_stats.values(), key=lambda x: -x["size"])
 
-    # --- Fichiers de meme nom (basename) sur disques differents ---
+    # Fichiers de meme nom (basename) sur disques differents
     if cfg.by_name:
         name_groups = defaultdict(list)
         for f in files:
@@ -335,9 +323,8 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             })
         plan.same_name_groups.sort(key=lambda g: -g["count"])
 
+    # Actions suggerees
     actions = []
-    # Doublons cross-drive: a examiner (aucune suppression automatique)
-    cross_dups = [g for g in plan.duplicate_groups if g.get("cross_drive")]
     if cross_dups:
         total_wasted = sum(g["wasted_bytes"] for g in cross_dups)
         actions.append({
@@ -348,8 +335,6 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             "count": len(cross_dups),
             "recoverable_bytes": total_wasted,
         })
-    # Doublons meme disque
-    same_dups = [g for g in plan.duplicate_groups if not g.get("cross_drive")]
     if same_dups:
         actions.append({
             "type": "review_same_drive_duplicates",
@@ -358,16 +343,13 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             "count": len(same_dups),
             "recoverable_bytes": sum(g["wasted_bytes"] for g in same_dups),
         })
-    # Dossiers miroirs: suggerer synchronisation
     if plan.mirror_dirs:
         actions.append({
             "type": "sync_mirror_dirs",
             "priority": "medium",
-            "description": f"{len(plan.mirror_dirs)} dossiers miroirs detectes; "
-                           "verifier la synchronisation.",
+            "description": f"{len(plan.mirror_dirs)} dossiers miroirs detectes; verifier la synchronisation.",
             "count": len(plan.mirror_dirs),
         })
-    # Dossiers vides: signaler seulement
     if plan.empty_dirs:
         actions.append({
             "type": "empty_dirs_found",
@@ -375,7 +357,6 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             "description": f"{len(plan.empty_dirs)} dossiers vides detectes (aucune suppression).",
             "count": len(plan.empty_dirs),
         })
-    # Liens casses
     if plan.broken_symlinks:
         actions.append({
             "type": "broken_symlinks_found",
@@ -383,7 +364,6 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             "description": f"{len(plan.broken_symlinks)} liens symboliques casses detectes.",
             "count": len(plan.broken_symlinks),
         })
-    # Dossiers dupliques
     if plan.duplicate_folders:
         actions.append({
             "type": "review_duplicate_folders",
@@ -392,16 +372,13 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             "count": len(plan.duplicate_folders),
             "recoverable_bytes": sum(d["total_size"] for d in plan.duplicate_folders),
         })
-    # Fichiers uniques: sauvegarde
     if plan.unique_files:
         actions.append({
             "type": "backup_unique_files",
             "priority": "low",
-            "description": f"{len(plan.unique_files)} fichiers uniques (sans doublon); "
-                           "candidats a la sauvegarde.",
+            "description": f"{len(plan.unique_files)} fichiers uniques (sans doublon); candidats a la sauvegarde.",
             "count": len(plan.unique_files),
         })
-
     plan.suggested_actions = actions
 
     # Comparaison temporelle (memoire persistante)
@@ -421,7 +398,8 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
             }
         except Exception:
             pass
-    # --- Resume ---
+
+    # Resume
     plan.summary = {
         "total_files": plan.total_files,
         "total_size": plan.total_size,
@@ -436,16 +414,9 @@ def compare(files, cfg: CompareConfig, scan_result=None, history=None, previous_
         "num_empty_dirs": len(plan.empty_dirs),
         "num_broken_symlinks": len(plan.broken_symlinks),
         "num_duplicate_folders": len(plan.duplicate_folders),
+        "num_md_comparisons": len(plan.md_comparisons),
         "recoverable_bytes": sum(g["wasted_bytes"] for g in plan.duplicate_groups),
         "recoverable_human": _human(sum(g["wasted_bytes"] for g in plan.duplicate_groups)),
         "roots": plan.roots,
     }
     return plan
-
-
-def _human(n: int) -> str:
-    for unit in ("B", "Ko", "Mo", "Go", "To"):
-        if abs(n) < 1024:
-            return f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n:.1f} Po"

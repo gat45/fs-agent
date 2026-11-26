@@ -51,7 +51,10 @@ def export_excel(plan, out_dir: Path) -> Path:
             " | ".join(f["path"] for f in g["files"]),
         ])
     for col in "ABCDEFG":
-        ws2.column_dimensions[col].width = 20
+        for row in ws2.iter_rows(min_row=2, max_row=ws2.max_row):
+            for cell in row:
+                if cell.value is None:
+                    cell.value = ""
 
     # Feuille 3: Fichiers uniques
     ws3 = wb.create_sheet("Uniques")

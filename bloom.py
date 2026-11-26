@@ -55,13 +55,19 @@ class BloomFilter:
 def filter_unique_sizes(entries: list) -> list:
     """Filtre les fichiers dont la taille est unique (pas de doublon possible).
 
-    Utilise un Bloom filter pour tester rapidement si une taille a deja ete vue.
-    Retourne la liste des fichiers dont la taille est partagee par >= 2 fichiers.
+    Les fichiers de taille 0 sont traites comme un cas special:
+    tous les fichiers vides sont considérés comme identiques.
     """
-    # Compter les occurrences de chaque taille
     size_counts = {}
     for e in entries:
         size_counts[e.size] = size_counts.get(e.size, 0) + 1
 
-    # Ne garder que les fichiers dont la taille est partagee
-    return [e for e in entries if size_counts.get(e.size, 0) >= 2]
+    # Les fichiers de taille 0 sont toujours consideres comme doublons potentiels
+    # (tous les fichiers vides sont identiques)
+    result = []
+    for e in entries:
+        if e.size == 0:
+            result.append(e)
+        elif size_counts.get(e.size, 0) >= 2:
+            result.append(e)
+    return result

@@ -10,24 +10,62 @@ import stat
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Dict, List, Optional, Iterator, Callable
+from typing import Dict, List, Optional, Callable
 
 from config import ScanConfig
+
+
+def _add_long_path_prefix(path: str) -> str:
+    """Ajoute le prefixe \\\\?\\ pour supporter les chemins longs sur Windows."""
+    if os.name != "nt":
+        return path
+    if path.startswith("\\\\?\\"):
+        return path
+    if path.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + path[2:]
+    if len(path) >= 2 and path[1] == ":":
+        return "\\\\?\\" + path
+    return path
+
+
+def _strip_long_path_prefix(path: str) -> str:
+    """Retire le prefixe \\\\?\\ pour l'affichage/stockage."""
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[8:]
+    if path.startswith("\\\\?\\"):
+        return path[4:]
+    return path
+
+
+def _drive_of(path: str) -> str:
+    if len(path) >= 2 and path[1] == ":":
+        return path[0].upper()
+    parts = path.replace("\\", "/").split("/")
+    return parts[0] if parts else ""
+
+
+def _should_exclude(name: str, excludes) -> bool:
+    if not excludes:
+        return False
+    low = name.lower()
+    for ex in excludes:
+        if low == ex.lower():
+            return True
+    return False
 
 
 @dataclass
 class FileEntry:
     path: str
-    root: str          # racine de scan dont depend ce fichier
-    drive: str         # lettre de disque (ex: "C", "E") ou ""
+    root: str
+    drive: str
     size: int
     mtime: float
     ext: str
-    rel_path: str = ""  # chemin relatif a la racine (compression de prefixe)
+    rel_path: str = ""
     is_symlink: bool = False
     nlink: int = 1
     inode: Optional[int] = None
-    # Rempli plus tard par le hasher
     partial_hash: Optional[str] = None
     full_hash: Optional[str] = None
 
@@ -54,13 +92,12 @@ class ScanResult:
     files: List[FileEntry] = field(default_factory=list)
     dirs: List[DirEntry] = field(default_factory=list)
     errors: List[Dict[str, str]] = field(default_factory=list)
-    started_at: float = 0.0
-    finished_at: float = 0.0
     empty_dirs: List[str] = field(default_factory=list)
     broken_symlinks: List[str] = field(default_factory=list)
+    started_at: float = 0.0
+    finished_at: float = 0.0
     total_files: int = 0
     total_size: int = 0
-    total_age_days: float = 0.0  # age moyen des fichiers en jours
 
     def to_dict(self):
         return {
@@ -77,47 +114,6 @@ class ScanResult:
         }
 
 
-def _add_long_path_prefix(path: str) -> str:
-    """Ajoute le prefixe \\\\?\\ pour supporter les chemins longs sur Windows."""
-    if os.name != "nt":
-        return path
-    if path.startswith("\\\\?\\"):
-        return path
-    if path.startswith("\\\\"):
-        return "\\\\?\\UNC\\" + path[2:]
-    if len(path) >= 2 and path[1] == ":":
-        return "\\\\?\\" + path
-    return path
-
-
-def _strip_long_path_prefix(path: str) -> str:
-    """Retire le prefixe \\\\?\\ pour l'affichage/stockage."""
-    if path.startswith("\\\\?\\UNC\\"):
-        return "\\\\" + path[8:]
-    if path.startswith("\\\\?\\"):
-        return path[4:]
-    return path
-
-
-def _drive_of(path: str) -> str:
-    # Windows: lettre de disque
-    if len(path) >= 2 and path[1] == ":":
-        return path[0].upper()
-    # UNC ou autre: premier segment
-    parts = path.replace("\\", "/").split("/")
-    return parts[0] if parts else ""
-
-
-def _should_exclude(name: str, excludes) -> bool:
-    if not excludes:
-        return False
-    low = name.lower()
-    for ex in excludes:
-        if low == ex.lower():
-            return True
-    return False
-
-
 def scan_one_root(root: str, cfg: ScanConfig,
                   progress_cb: Optional[Callable[[int], None]] = None) -> ScanResult:
     """Scanne une seule racine."""
@@ -131,20 +127,23 @@ def scan_one_root(root: str, cfg: ScanConfig,
 
     root_str = str(root_path)
     drive = _drive_of(root_str)
-
-    # Support des chemins longs Windows
     access_root = _add_long_path_prefix(root_str)
 
-    # Dictionnaire chemin dossier -> DirEntry (pour agregation)
     dir_map: Dict[str, DirEntry] = {}
-
     excludes = cfg.excludes or []
-    # Incremental scan: utiliser le cache de dossiers
+
+    # Incremental scan
     dir_cache = None
     if cfg.incremental:
-        from incremental import DirCache
-        cache_db = cfg.resolved_cache_db().parent / "dir_cache.sqlite"
-        dir_cache = DirCache(cache_db)
+        try:
+            from incremental import DirCache
+            cache_db = cfg.resolved_cache_db().parent / "dir_cache.sqlite"
+            dir_cache = DirCache(cache_db)
+        except Exception:
+            pass
+
+    # Suivi des symlinks visites pour eviter les boucles
+    visited_inodes = set()
 
     try:
         for dirpath, dirnames, filenames in os.walk(access_root, followlinks=cfg.follow_symlinks):
@@ -154,16 +153,13 @@ def scan_one_root(root: str, cfg: ScanConfig,
                     st = os.stat(_add_long_path_prefix(dirpath))
                     cached = dir_cache.get(dirpath)
                     if cached is not None and cached["mtime"] == st.st_mtime:
-                        # Dossier non modifie: ne pas descendre
                         dirnames[:] = []
-                        # Utiliser les donnees en cache
-                        # (on ne re-scanne pas les fichiers)
                         continue
                 except OSError:
                     pass
 
-            # Nettoyer le prefixe pour le stockage
             dirpath = _strip_long_path_prefix(dirpath)
+
             # Calcul de la profondeur
             try:
                 rel = os.path.relpath(dirpath, root_str)
@@ -174,10 +170,8 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 dirnames[:] = []
                 continue
 
-            # Filtrage des dossiers exclus (in-place pour ne pas descendre)
             dirnames[:] = [d for d in dirnames if not _should_exclude(d, excludes)]
 
-            # Enregistrer le dossier courant
             if dirpath not in dir_map:
                 dir_map[dirpath] = DirEntry(path=dirpath, root=root_str, drive=drive)
 
@@ -193,8 +187,10 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 except OSError as e:
                     res.errors.append({"path": full, "error": str(e)})
                     continue
+
                 if cfg.skip_symlinks and stat.S_ISLNK(st.st_mode):
                     continue
+
                 # Detection des liens symboliques casses
                 if stat.S_ISLNK(st.st_mode):
                     try:
@@ -205,6 +201,21 @@ def scan_one_root(root: str, cfg: ScanConfig,
                             res.broken_symlinks.append(full)
                     except OSError:
                         res.broken_symlinks.append(full)
+
+                # Detection des boucles de symlinks
+                if stat.S_ISLNK(st.st_mode) and cfg.follow_symlinks:
+                    try:
+                        real = os.path.realpath(full)
+                        inode = (st.st_dev, st.st_ino)
+                        if inode in visited_inodes:
+                            continue
+                        visited_inodes.add(inode)
+                    except OSError:
+                        pass
+
+                if not stat.S_ISREG(st.st_mode) and not stat.S_ISLNK(st.st_mode):
+                    continue
+
                 # Filtre taille
                 if st.st_size < cfg.min_size:
                     continue
@@ -217,11 +228,11 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 fe = FileEntry(
                     path=full,
                     root=root_str,
-                    rel_path=os.path.relpath(full, root_str),
                     drive=drive,
                     size=st.st_size,
                     mtime=st.st_mtime,
                     ext=ext,
+                    rel_path=os.path.relpath(full, root_str),
                     is_symlink=bool(stat.S_ISLNK(st.st_mode)),
                     nlink=st.st_nlink,
                     inode=st.st_ino,
@@ -230,7 +241,6 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 res.total_files += 1
                 res.total_size += st.st_size
 
-                # Agregation dossier
                 de.file_count += 1
                 de.total_size += st.st_size
 
@@ -245,7 +255,7 @@ def scan_one_root(root: str, cfg: ScanConfig,
                 except OSError:
                     pass
 
-            # Agregation vers le parent: ajouter la taille de ce dossier au parent
+            # Agregation vers le parent
             parent = os.path.dirname(dirpath)
             if parent and parent != dirpath and parent in dir_map:
                 dir_map[parent].total_size += de.total_size
@@ -259,6 +269,9 @@ def scan_one_root(root: str, cfg: ScanConfig,
             res.empty_dirs.append(de.path)
 
     res.dirs = list(dir_map.values())
+    # Recalculer les totaux
+    res.total_files = len(res.files)
+    res.total_size = sum(f.size for f in res.files)
     res.finished_at = time.time()
     return res
 
@@ -281,9 +294,6 @@ def scan_roots(roots: List[str], cfg: ScanConfig,
         merged.errors.extend(sub.errors)
         merged.empty_dirs.extend(sub.empty_dirs)
         merged.broken_symlinks.extend(sub.broken_symlinks)
-        merged.total_files += sub.total_files  # approximatif
-        merged.total_size += sub.total_size
-    # Recalculer les totaux reels
     merged.total_files = len(merged.files)
     merged.total_size = sum(f.size for f in merged.files)
     merged.finished_at = time.time()
